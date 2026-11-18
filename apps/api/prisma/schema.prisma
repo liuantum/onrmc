@@ -380,7 +380,7 @@ enum MaintenancePaidVia {
   PURCHASE_BILL
 }
 
-/// One service or repair done on a truck, with its cost. CASH/BANK post Dr Vehicle repairs (5310) / Cr Cash or Bank.
+/// One service or repair done on a truck, with its cost. CASH/BANK post Dr Vehicle repairs (5310, an overhead) / Cr Cash or Bank.
 model MaintenanceRecord {
   id           String               @id @default(cuid())
   tenantId     String

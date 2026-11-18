@@ -65,6 +65,6 @@ ALTER TABLE "MaintenanceRecord" ADD CONSTRAINT "MaintenanceRecord_scheduleId_fke
 
 -- Vehicle repairs account for existing tenants
 INSERT INTO "Account" ("id", "tenantId", "code", "name", "type", "group", "system")
-SELECT 'acc5310_' || t."id", t."id", '5310', 'Vehicle repairs & maintenance', 'EXPENSE', 'Direct Expenses', true FROM "Tenant" t
+SELECT 'acc5310_' || t."id", t."id", '5310', 'Vehicle repairs & maintenance', 'EXPENSE', 'Indirect Expenses', true FROM "Tenant" t
 WHERE EXISTS (SELECT 1 FROM "Account" a WHERE a."tenantId" = t."id" AND a."code" = '1100')
   AND NOT EXISTS (SELECT 1 FROM "Account" a WHERE a."tenantId" = t."id" AND a."code" = '5310');
