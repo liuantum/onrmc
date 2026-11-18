@@ -7,8 +7,8 @@ for subscriptions. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```
 apps/api      Fastify + Prisma + PostgreSQL (TypeScript)
 apps/web      React + Vite + Tailwind web app (staff, owner, super admin)
-apps/driver   Expo app: trips + background GPS
-apps/owner    Expo app: today's numbers, private margin, trucks on road
+apps/android  Native Android apps (Kotlin + Jetpack Compose): onrmc Driver (trips + background GPS)
+              and onrmc Owner (today's numbers, private margin, trucks on a map). See apps/android/README.md
 packages/shared  GST math, roles, trip states
 ```
 
@@ -25,12 +25,11 @@ pnpm dev:api                                 # http://localhost:4000
 pnpm dev:web                                 # http://localhost:5173
 ```
 
-Mobile apps (set `extra.apiUrl` in each `app.json` to your computer's LAN IP):
+Android apps: download the APKs from the *Android apps* GitHub Actions run, or open `apps/android` in
+Android Studio. On a phone, enter your computer's Wi-Fi IP on the sign-in screen. Details in
+[apps/android/README.md](apps/android/README.md).
 
-```bash
-cd apps/driver && npm install && npx expo start
-cd apps/owner  && npm install && npx expo start
-```
+API tests: `pnpm --filter @onrmc/api test`.
 
 ### Demo logins (password `demo@123` unless noted)
 

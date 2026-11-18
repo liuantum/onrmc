@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- drum -->
+    <path android:fillColor="#FFFFFF" android:pathData="M30,44 L58,36 Q66,34 70,40 L72,52 Q72,60 64,60 L34,60 Q28,58 28,52 Z" />
+    <path android:fillColor="#1D4ED8" android:pathData="M40,42 L44,59 L47,59 L43,41 Z M52,39 L56,59 L59,59 L55,38 Z" />
+    <!-- cab -->
+    <path android:fillColor="#FFFFFF" android:pathData="M72,46 L80,46 L86,56 L86,66 L72,66 Z" />
+    <path android:fillColor="#1D4ED8" android:pathData="M75,49 L79,49 L83,56 L75,56 Z" />
+    <!-- chassis -->
+    <path android:fillColor="#FFFFFF" android:pathData="M24,62 L86,62 L86,67 L24,67 Z" />
+    <!-- wheels -->
+    <path android:fillColor="#FFFFFF" android:pathData="M36,72 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M50,72 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M78,72 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0" />
+</vector>
