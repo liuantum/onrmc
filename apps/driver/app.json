@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "onrmc Driver",
+    "slug": "onrmc-driver",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "extra": { "apiUrl": "http://192.168.1.10:4000/api" },
+    "android": {
+      "package": "com.onrmc.driver",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION", "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_LOCATION"]
+    },
+    "ios": {
+      "bundleIdentifier": "com.onrmc.driver",
+      "infoPlist": {
+        "UIBackgroundModes": ["location"],
+        "NSLocationWhenInUseUsageDescription": "onrmc shares your truck's location with dispatch during a trip.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "onrmc keeps sharing your truck's location during a trip while the app is in the background."
+      }
+    },
+    "plugins": [["expo-location", { "isAndroidBackgroundLocationEnabled": true, "isAndroidForegroundServiceEnabled": true }]]
+  }
+}

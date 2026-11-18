@@ -1,0 +1,5 @@
+packages:
+  - apps/api
+  - apps/web
+  - packages/*
+# apps/driver and apps/owner are Expo apps; install them separately with `npx expo install`.

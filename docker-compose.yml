@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: onrmc
+      POSTGRES_PASSWORD: onrmc
+      POSTGRES_DB: onrmc
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+volumes:
+  pgdata:

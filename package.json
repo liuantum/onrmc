@@ -1,0 +1,21 @@
+{
+  "name": "onrmc",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @onrmc/api dev",
+    "dev:web": "pnpm --filter @onrmc/web dev",
+    "build": "pnpm -r build",
+    "db:migrate": "pnpm --filter @onrmc/api prisma migrate dev",
+    "db:seed": "pnpm --filter @onrmc/api seed"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "prisma",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild"
+    ]
+  }
+}

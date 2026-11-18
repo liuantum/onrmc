@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Material" ALTER COLUMN "avgCost" SET DATA TYPE DECIMAL(18,6);
+
