@@ -335,20 +335,77 @@ enum VehicleType {
 }
 
 model Vehicle {
-  id         String      @id @default(cuid())
-  tenantId   String
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
-  number     String
-  type       VehicleType @default(TRANSIT_MIXER)
-  capacityM3 Decimal     @default(6) @db.Decimal(6, 2)
-  lastLat    Float?
-  lastLng    Float?
-  lastSeenAt DateTime?
-  active     Boolean     @default(true)
-  challans   Challan[]
-  gpsPoints  GpsPoint[]
+  id                   String                @id @default(cuid())
+  tenantId             String
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  number               String
+  type                 VehicleType           @default(TRANSIT_MIXER)
+  capacityM3           Decimal               @default(6) @db.Decimal(6, 2)
+  lastLat              Float?
+  lastLng              Float?
+  lastSeenAt           DateTime?
+  active               Boolean               @default(true)
+  /// Latest odometer reading (km), updated from service records
+  odometerKm           Int?
+  challans             Challan[]
+  gpsPoints            GpsPoint[]
+  maintenanceSchedules MaintenanceSchedule[]
+  maintenanceRecords   MaintenanceRecord[]
 
   @@unique([tenantId, number])
+}
+
+/// A recurring service task for one truck, due every N km and/or every N days, whichever comes first.
+model MaintenanceSchedule {
+  id         String              @id @default(cuid())
+  tenantId   String
+  vehicleId  String
+  vehicle    Vehicle             @relation(fields: [vehicleId], references: [id])
+  task       String // e.g. "Engine oil + filter", "Drum gearbox oil", "Tyre rotation", "Insurance renewal"
+  everyKm    Int?
+  everyDays  Int?
+  lastDoneAt DateTime?
+  lastDoneKm Int?
+  active     Boolean             @default(true)
+  createdAt  DateTime            @default(now())
+  records    MaintenanceRecord[]
+
+  @@index([tenantId, vehicleId])
+}
+
+enum MaintenancePaidVia {
+  CASH
+  BANK
+  /// Already booked through a supplier purchase bill: nothing is posted here, so it is not counted twice.
+  PURCHASE_BILL
+}
+
+/// One service or repair done on a truck, with its cost. CASH/BANK post Dr Vehicle repairs (5310, an overhead) / Cr Cash or Bank.
+model MaintenanceRecord {
+  id           String               @id @default(cuid())
+  tenantId     String
+  number       String
+  vehicleId    String
+  vehicle      Vehicle              @relation(fields: [vehicleId], references: [id])
+  scheduleId   String?
+  schedule     MaintenanceSchedule? @relation(fields: [scheduleId], references: [id])
+  date         DateTime
+  odometerKm   Int?
+  description  String
+  vendor       String?
+  partsCost    Decimal              @default(0) @db.Decimal(12, 2)
+  labourCost   Decimal              @default(0) @db.Decimal(12, 2)
+  totalCost    Decimal              @db.Decimal(12, 2)
+  paidVia      MaintenancePaidVia
+  billRef      String?
+  downtimeHrs  Decimal?             @db.Decimal(6, 1)
+  createdById  String?
+  createdAt    DateTime             @default(now())
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  @@unique([tenantId, number])
+  @@index([tenantId, vehicleId, date])
 }
 
 // ───────────────────────── Operations ─────────────────────────
@@ -404,8 +461,50 @@ model Batch {
   cancelReason String?
   consumption  BatchConsumption[]
   challan      Challan?
+  cubeSets     CubeSet[]
 
   @@unique([tenantId, number])
+}
+
+/// Cubes cast from one batch (usually 3 per test age), with fresh-concrete checks at the plant.
+model CubeSet {
+  id          String       @id @default(cuid())
+  tenantId    String
+  number      String
+  batchId     String
+  batch       Batch        @relation(fields: [batchId], references: [id])
+  /// Grade copied at sampling so later mix changes don't alter the record (e.g. "M25").
+  grade       String
+  fck         Decimal      @db.Decimal(5, 1)
+  sampledAt   DateTime
+  slumpMm     Int?
+  tempC       Decimal?     @db.Decimal(4, 1)
+  cubeSizeMm  Int          @default(150)
+  sampledById String?
+  notes       String?
+  createdAt   DateTime     @default(now())
+  results     CubeResult[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, sampledAt])
+}
+
+/// One crushed cube. Strength (N/mm²) = load (kN) × 1000 / (side × side).
+model CubeResult {
+  id          String   @id @default(cuid())
+  cubeSetId   String
+  cubeSet     CubeSet  @relation(fields: [cubeSetId], references: [id], onDelete: Cascade)
+  ageDays     Int
+  testedAt    DateTime
+  cubeNo      Int
+  weightKg    Decimal? @db.Decimal(6, 3)
+  loadKn      Decimal  @db.Decimal(8, 1)
+  strengthMpa Decimal  @db.Decimal(6, 2)
+  testedById  String?
+  remarks     String?
+  createdAt   DateTime @default(now())
+
+  @@unique([cubeSetId, ageDays, cubeNo])
 }
 
 model BatchConsumption {

@@ -15,7 +15,7 @@ truck fleet on it.
 | Realtime | WebSocket (Fastify websocket) for live truck positions & dashboards | |
 | Web app | **React 18 + Vite + TypeScript + Tailwind + TanStack Query + React Router** | Fast dev/build, cached data fetching, clean UI |
 | Maps | Leaflet + OpenStreetMap (swap to Google Maps if preferred) | Free, no key needed |
-| Mobile apps | **React Native + Expo** (Driver app, Owner app) | One codebase for Android + iOS, background GPS via `expo-location` |
+| Mobile apps | **Native Android: Kotlin + Jetpack Compose** (Driver app, Owner app, shared `core` module) | Real Android apps; GPS through a location foreground service with an on-phone queue |
 | PDFs | Server-side invoice/challan PDF (browser print stylesheet first, Puppeteer later) | |
 | Monorepo | pnpm workspaces; `packages/shared` holds types, GST math, enums | One source of truth for calculations |
 | Deploy | Docker images; Postgres managed (RDS / Neon / Supabase); web on CDN | |
@@ -34,8 +34,8 @@ truck fleet on it.
   │    ├─ Mixing / Batching : mix designs, batch tickets, actual vs design consumption
   │    ├─ Dispatch          : delivery challans, truck assignment, live fleet map
   │    └─ Owner analytics   : owner-only margin, cost per m³, plant efficiency
-  ├─ Driver app (Expo)      : login, today's trips, start/arrive/deliver, background GPS, photo/sign POD
-  └─ Owner app (Expo)       : today's production & sales, cash/receivables, live trucks, alerts
+  ├─ Driver app (Android)   : login, today's trips, start/arrive/deliver, background GPS, receiver name + diesel
+  └─ Owner app (Android)    : today's production & sales, cash/receivables, private margin, trucks on a map, alerts
 ```
 
 ## 3. Core flow (single source of truth)
@@ -79,8 +79,15 @@ Code: `apps/api/src/lib/einvoice/` (payload, validation, adapters) and `apps/api
   - `MOCK` works offline. Its IRN = SHA-256(GSTIN + FY + doc type + doc no), like NIC's. Its QR and
     signed invoice are JWT-shaped but not signed by NIC. It applies the 24 h cancel windows and the
     e-way bill validity rule (1 day per 200 km).
-  - `CLEARTAX`, `MASTERS_INDIA` and `NIC_DIRECT` are stubs. They fail with a clear message until
-    they are implemented and given credentials.
+  - `CLEARTAX` (`adapters/cleartax.ts`): e-invoice API v2. Auth token + GSTIN (+ owner id) headers; the NIC payload
+    is sent unchanged as `[{ transaction }]` and the IRP's answer read from `govt_response`.
+  - `MASTERS_INDIA` (`adapters/mastersindia.ts`): token from `/api/v1/token-auth/` (cached ~20 h, refreshed once on
+    401); the NIC payload is mapped field by field to Masters India's snake_case format, copying values, never
+    recomputing them.
+  - Both default to the provider's **sandbox**. Production is chosen explicitly in Settings → E-invoicing
+    (Environment), and the screen shows which mode is active. Request mapping and error handling are covered by
+    `apps/api/test/gsp-adapters.test.ts` against a fake server; confirm against the provider's sandbox before going live.
+  - `NIC_DIRECT` is still a stub (needs NIC API credentials, a whitelisted IP and session-key exchange).
 - **Credentials:** encrypted with AES-256-GCM using `EINVOICE_ENC_KEY` from the API environment.
   They are write-only from the UI and never returned or logged.
 - **Rules enforced:**
@@ -102,9 +109,9 @@ Code: `apps/api/src/lib/einvoice/` (payload, validation, adapters) and `apps/api
   - `GET|PUT /einvoice/settings`
   - `POST /einvoice/test`
   - `GET|PUT /company`
-- **Going live:** needs a GSP account (sandbox, then production), the company's e-invoice API user
-  created on the IRP/EWB portal for that GSP, and the adapter for that GSP filled in (see the TODOs in
-  `adapters/stubs.ts`).
+- **Going live:** get a sandbox account from ClearTax or Masters India, save its credentials with Environment =
+  sandbox and press *Test connection*; generate a test IRN. Then create the company's e-invoice API user on the
+  IRP/EWB portal for that GSP, save the production credentials and switch Environment to production.
 
 ## 4b. Inventory and cost of materials in the books
 
@@ -197,6 +204,55 @@ Code: `apps/api/src/routes/purchases.ts`. Web: Suppliers, Purchase bills, Suppli
   - ITC in the GST summary: regular and reverse charge, net of supplier debit notes.
   - Creditors on the balance sheet.
 
+## 4e. Truck maintenance
+
+Code: `apps/api/src/routes/fleet.ts`. Web: Truck maintenance.
+
+- **Schedules:** per truck, a task due every N km and/or every N days, whichever comes first (e.g. engine oil every
+  10,000 km or 180 days, insurance every 365 days). A standard set can be added to all transit mixers in one click.
+  Status: overdue, due soon (7 days or 500 km) or OK; km-based tasks need an odometer reading.
+- **Service log:** date, odometer, work done, garage, parts + labour, downtime. Marking a scheduled task done moves its
+  "last done" date and km; cancelling an entry moves it back.
+- **Books:** paid in cash or bank → Dr Vehicle repairs & maintenance (5310, an overhead below gross profit), Cr Cash /
+  Bank. If the garage's GST bill is entered under Purchase bills, the entry is marked "already on a purchase bill" and
+  posts nothing, so the cost is never counted twice. Cancelling reverses the journal.
+- **Cost per truck:** repairs + trip diesel for the period, per m³ delivered.
+
+## 4f. Quality control: cube tests
+
+Code: `apps/api/src/routes/qc.ts`. Web: Quality (cubes).
+
+- A cube set is cast from one batch (grade and fck copied at sampling), with slump and concrete temperature.
+- Results per age (7, 28 … days): failure load in kN (strength = load × 1000 / side², 150 or 100 mm cubes) or the
+  strength directly.
+- Checks (IS 456:2000, Amendment 4): at 28 days each sample ≥ fck − 4 (M20+) or fck − 3 (M15); the mean of the last
+  4 samples of a grade ≥ fck + 4 (M20+) or fck + 3 (M15); a cube more than ±15 % from its sample mean makes the
+  sample suspect. 7-day results are indicative (≈ 65 % of fck).
+- "Due for testing" lists sets that reached 7 or 28 days without results; the owner app shows the count.
+
+## 4g. Subscriptions and payments (onrmc ← plant owners)
+
+Code: `apps/api/src/lib/subscription.ts`, `lib/gateways.ts`, `routes/subscription.ts`, admin routes in `routes/admin.ts`.
+Web: owner → Subscription; super admin → Payments, Payment settings.
+
+- **Methods**, each switched on or off by the super admin:
+  - *Manual:* the owner sees the super admin's UPI QR, UPI id and bank details, pays, and submits the UTR (and an
+    optional screenshot). The super admin checks the bank statement and approves or rejects. A UTR can't be
+    submitted twice.
+  - *Razorpay:* Orders API + Checkout; the signature is verified on the server; `payment.captured` /
+    `order.paid` webhooks (signature-checked, deduplicated) activate it too, so a closed browser doesn't lose a payment.
+  - *Cashfree:* PG API 2023-08-01 + JS SDK; after checkout the server asks Cashfree for the order status (never trusts
+    the browser); `PAYMENT_SUCCESS_WEBHOOK` triggers the same check.
+  - Test mode: Razorpay `rzp_test_` keys and Cashfree *sandbox* are labelled "test mode" in both screens. A gateway can
+    only be switched on once its keys are saved; secrets are encrypted (AES-256-GCM) and never shown again.
+- **Price** is always computed on the server from the plan, with GST by place of supply (CGST+SGST in the seller's
+  state, otherwise IGST). Each paid subscription gets onrmc's own GST tax invoice (`SUB/26-27/0001`, SAC 998314).
+- **Activation** happens exactly once per payment (callback, webhook and approval can all race safely). A renewal
+  starts from the current expiry; a lapsed account starts today.
+- **Lapse:** after expiry the account has a grace period (default 7 days, banner shown), then it is **paused**: every
+  write by the tenant's users is refused with 402, reads keep working, and the owner can still sign in and pay.
+  An hourly sweep records the status; paying reactivates at once. A super-admin suspension blocks sign-in entirely.
+
 ## 5. Owner-only analytics (private, built from true data)
 
 The owner sees what staff and customers don't: real cost per m³ (materials at purchase
@@ -233,7 +289,7 @@ ledgers always show the same real figures.
    web app shell + key screens, driver & owner app shells.
 2. **Accounts depth:** chart of accounts, journal vouchers, payables, expenses, bank
    reconciliation, P&L, balance sheet, GST reports.
-3. **Plant depth:** batching-plant controller import (CSV / PLC integration), QC cube tests,
-   pump scheduling, vehicle maintenance & diesel log.
-4. **SaaS ops:** Razorpay subscription billing, onboarding wizard, usage metering,
-   WhatsApp/SMS invoice sharing, e-invoice IRN & e-way bill.
+3. **Plant depth:** batching-plant controller import (CSV / PLC integration) and pump scheduling remain.
+   QC cube tests and vehicle maintenance are done.
+4. **SaaS ops:** onboarding wizard, usage metering and WhatsApp/SMS invoice sharing remain. Subscription payments
+   (manual, Razorpay, Cashfree) and e-invoice IRN & e-way bill (ClearTax, Masters India) are done.

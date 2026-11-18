@@ -4,25 +4,27 @@ import { GspError, type GspAdapter } from './types.js';
  * Real GSP adapters. Each needs an account with the provider (sandbox first, then production)
  * and the credentials saved in Settings → E-invoicing.
  *
- * TODO(cleartax): implement against ClearTax GSP e-invoice API v2 — auth with X-Cleartax-Auth-Token
- *   + gstin header; PUT /einv/v2/eInvoice/generate, /einv/v2/eInvoice/cancel, /einv/v2/eInvoice/ewaybill,
- *   /einv/v1/ewaybill/update?action=PARTB, CANCEL, EXTEND.
- * TODO(masters-india): implement against Masters India e-invoice API — POST /api/v1/token-auth/ for an access
- *   token (username/password/client_id/client_secret), then /api/v1/einvoice/, /api/v1/cancel-einvoice/,
- *   /api/v1/gen-ewb-by-irn/, /api/v1/update-vehicle-number/, /api/v1/ewayBillCancel/, /api/v1/ewayBillValidityExtend/.
+ * ClearTax → ./cleartax.ts, Masters India → ./mastersindia.ts (both default to the provider's sandbox).
  * TODO(nic-direct): direct IRP/EWB API access needs NIC API credentials (whitelisted IP, client id/secret,
  *   AES session key exchange with NIC's public key). Usually only for large taxpayers — prefer a GSP.
  */
-export const CREDENTIAL_FIELDS: Record<string, { key: string; label: string }[]> = {
+export interface CredentialField { key: string; label: string; optional?: boolean; options?: string[] }
+const ENV: CredentialField = { key: 'environment', label: 'Environment', optional: true, options: ['sandbox', 'production'] };
+export const CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
   MOCK: [],
-  CLEARTAX: [{ key: 'authToken', label: 'Auth token' }, { key: 'ownerId', label: 'Owner ID' }],
-  MASTERS_INDIA: [{ key: 'username', label: 'Username' }, { key: 'password', label: 'Password' }, { key: 'clientId', label: 'Client ID' }, { key: 'clientSecret', label: 'Client secret' }],
+  CLEARTAX: [ENV, { key: 'authToken', label: 'Auth token' }, { key: 'ownerId', label: 'Owner ID', optional: true }],
+  MASTERS_INDIA: [ENV, { key: 'username', label: 'Username' }, { key: 'password', label: 'Password' }, { key: 'clientId', label: 'Client ID', optional: true }, { key: 'clientSecret', label: 'Client secret', optional: true }],
   NIC_DIRECT: [{ key: 'clientId', label: 'Client ID' }, { key: 'clientSecret', label: 'Client secret' }, { key: 'username', label: 'API username' }, { key: 'password', label: 'API password' }],
 };
 
+export function missingCredentials(name: string, creds: Record<string, string> | null) {
+  const missing = (CREDENTIAL_FIELDS[name] ?? []).filter((f) => !f.optional && !creds?.[f.key]).map((f) => f.label);
+  if (missing.length) throw new GspError(`${name} credentials are missing: ${missing.join(', ')}. Add them in Settings → E-invoicing.`, 'NO_CREDENTIALS');
+}
+
 export class NotImplementedAdapter implements GspAdapter {
   constructor(readonly name: string, creds: Record<string, string> | null) {
-    const missing = (CREDENTIAL_FIELDS[name] ?? []).filter((f) => !creds?.[f.key]).map((f) => f.label);
+    const missing = (CREDENTIAL_FIELDS[name] ?? []).filter((f) => !f.optional && !creds?.[f.key]).map((f) => f.label);
     if (missing.length) throw new GspError(`${name} credentials are missing: ${missing.join(', ')}. Add them in Settings → E-invoicing.`, 'NO_CREDENTIALS');
   }
   private no(): never {

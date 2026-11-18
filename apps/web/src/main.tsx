@@ -27,6 +27,13 @@ import Insights from './pages/Insights';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
 import Plans from './pages/Plans';
+import Subscription, { SubscriptionInvoiceView } from './pages/Subscription';
+import AdminPayments, { AdminPaymentSettings } from './pages/AdminPayments';
+import { useParams } from 'react-router-dom';
+import Maintenance from './pages/Maintenance';
+import Qc from './pages/Qc';
+
+const SubInvoice = () => <SubscriptionInvoiceView id={useParams().id!} />;
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: true, retry: 1 } } });
 
@@ -55,6 +62,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="batching" element={<Batching />} />
             <Route path="dispatch" element={<Dispatch />} />
             <Route path="fleet" element={<Fleet />} />
+            <Route path="maintenance" element={<Maintenance />} />
+            <Route path="qc" element={<Qc />} />
             <Route path="invoices" element={<Invoices />} />
             <Route path="invoices/:id" element={<InvoiceView />} />
             <Route path="notes" element={<Notes />} />
@@ -71,6 +80,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="settings" element={<Settings />} />
             <Route path="admin" element={<Admin />} />
             <Route path="admin/plans" element={<Plans />} />
+            <Route path="admin/payments" element={<AdminPayments />} />
+            <Route path="admin/payment-settings" element={<AdminPaymentSettings />} />
+            <Route path="subscription" element={<Subscription />} />
+            <Route path="subscription/invoices/:id" element={<SubInvoice />} />
           </Route>
         </Routes>
       </BrowserRouter>

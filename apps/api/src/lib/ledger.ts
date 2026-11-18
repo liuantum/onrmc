@@ -24,6 +24,7 @@ export const SYSTEM_ACCOUNTS = [
   { code: '5100', name: 'Diesel / Fuel expense', type: 'EXPENSE', group: 'Direct Expenses' },
   { code: '5200', name: 'Salaries & Wages', type: 'EXPENSE', group: 'Indirect Expenses' },
   { code: '5300', name: 'Plant Maintenance', type: 'EXPENSE', group: 'Indirect Expenses' },
+  { code: '5310', name: 'Vehicle repairs & maintenance', type: 'EXPENSE', group: 'Indirect Expenses' },
   { code: '5400', name: 'Round off', type: 'EXPENSE', group: 'Indirect Expenses' },
 ] as const;
 

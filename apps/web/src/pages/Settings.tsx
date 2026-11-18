@@ -130,7 +130,7 @@ function Plants() {
   );
 }
 
-const PROVIDERS = [['MOCK', 'Mock (offline testing — no real IRNs)'], ['CLEARTAX', 'ClearTax GSP'], ['MASTERS_INDIA', 'Masters India GSP'], ['NIC_DIRECT', 'NIC direct API']] as const;
+const PROVIDERS = [['MOCK', 'Mock (offline testing — no real IRNs)'], ['CLEARTAX', 'ClearTax GSP'], ['MASTERS_INDIA', 'Masters India GSP'], ['NIC_DIRECT', 'NIC direct API (not built)']] as const;
 
 function Einvoicing() {
   const qc = useQueryClient();
@@ -158,12 +158,13 @@ function Einvoicing() {
     onError: (e: Error) => { setMsg(null); setError(e.message); },
   });
   if (!s || !form || !co) return <div className="text-slate-400">Loading…</div>;
-  const fields: { key: string; label: string }[] = s.credentialFields[form.provider] ?? [];
+  const fields: { key: string; label: string; optional?: boolean; options?: string[] }[] = s.credentialFields[form.provider] ?? [];
   const providerChanged = form.provider !== s.provider;
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="card p-5">
-        <h3 className="mb-1 font-semibold">E-invoice &amp; e-way bill</h3>
+        <h3 className="mb-1 flex items-center gap-2 font-semibold">E-invoice &amp; e-way bill
+          {s.mode && <span className={`badge ${s.mode === 'production' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{s.mode === 'offline' ? 'offline mock' : s.mode === 'sandbox' ? 'sandbox / test' : 'production'}</span>}</h3>
         <p className="mb-4 text-sm text-slate-500">IRNs are generated for B2B tax invoices only. Amounts sent to the portal are exactly the amounts on the invoice.</p>
         <fieldset disabled={!canEdit} className="space-y-3">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.einvoiceEnabled} onChange={(e) => setForm({ ...form, einvoiceEnabled: e.target.checked })} />Generate e-invoices (IRN)</label>
@@ -172,8 +173,15 @@ function Einvoicing() {
           {fields.length > 0 && <div className="space-y-3 rounded-lg bg-slate-50 p-3">
             <p className="text-xs text-slate-500">Credentials are encrypted on the server and never shown again. Leave a field blank to keep the saved value.{providerChanged && ' Changing provider clears saved credentials.'}</p>
             {!s.encryptionReady && <p className="text-xs text-red-600">The server has no EINVOICE_ENC_KEY set, so credentials cannot be saved.</p>}
-            {fields.map((f) => (
-              <Field key={f.key} label={`${f.label}${!providerChanged && s.savedCredentialKeys.includes(f.key) ? ' · saved' : ''}`}>
+            {fields.map((f) => f.options ? (
+              <Field key={f.key} label={f.label}>
+                <select className="input" value={creds[f.key] ?? ''} onChange={(e) => setCreds({ ...creds, [f.key]: e.target.value })}>
+                  <option value="">{!providerChanged && s.savedCredentialKeys.includes(f.key) ? 'Keep saved setting' : `${f.options[0]} (default)`}</option>
+                  {f.options.map((o) => <option key={o} value={o}>{o === 'sandbox' ? 'Sandbox (test, no legal IRNs)' : o === 'production' ? 'Production (live IRNs)' : o}</option>)}
+                </select>
+              </Field>
+            ) : (
+              <Field key={f.key} label={`${f.label}${f.optional ? ' (optional)' : ''}${!providerChanged && s.savedCredentialKeys.includes(f.key) ? ' · saved' : ''}`}>
                 <input className="input" type="password" autoComplete="new-password" value={creds[f.key] ?? ''} placeholder={!providerChanged && s.savedCredentialKeys.includes(f.key) ? '••••••••' : ''} onChange={(e) => setCreds({ ...creds, [f.key]: e.target.value })} />
               </Field>
             ))}

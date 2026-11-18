@@ -2,4 +2,4 @@ packages:
   - apps/api
   - apps/web
   - packages/*
-# apps/driver and apps/owner are Expo apps; install them separately with `npx expo install`.
+# apps/android holds the native Android apps (Gradle, not pnpm).
