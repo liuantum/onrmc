@@ -16,6 +16,7 @@ import gpsRoutes from './routes/gps.js';
 import analyticsRoutes from './routes/analytics.js';
 import fleetRoutes from './routes/fleet.js';
 import qcRoutes from './routes/qc.js';
+import gstinRoutes from './routes/gstin.js';
 import subscriptionRoutes, { webhookRoutes } from './routes/subscription.js';
 import { cachedState, sweepSubscriptions } from './lib/subscription.js';
 import type { JwtUser } from './lib/auth.js';
@@ -63,6 +64,7 @@ export async function build() {
   await app.register(analyticsRoutes, { prefix: '/api/analytics' });
   await app.register(fleetRoutes, { prefix: '/api' });
   await app.register(qcRoutes, { prefix: '/api' });
+  await app.register(gstinRoutes, { prefix: '/api' });
   await app.register(subscriptionRoutes, { prefix: '/api/subscription' });
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
   return app;

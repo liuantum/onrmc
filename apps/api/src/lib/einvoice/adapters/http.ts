@@ -33,4 +33,5 @@ export function portalDate(s: string | null | undefined): Date | null {
 export const todayIst = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
 
 export type GspEnv = 'sandbox' | 'production';
-export const envOf = (creds: Record<string, string> | null): GspEnv => (creds?.environment === 'production' ? 'production' : 'sandbox');
+/** Live (production) unless the credentials say sandbox. */
+export const envOf = (creds: Record<string, string> | null): GspEnv => (creds?.environment === 'sandbox' ? 'sandbox' : 'production');

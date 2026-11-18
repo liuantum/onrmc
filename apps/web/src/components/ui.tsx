@@ -101,3 +101,17 @@ export function formData(e: React.FormEvent<HTMLFormElement>) {
   }
   return out;
 }
+
+/** On/off switch that still posts as a checkbox through formData. */
+export function Toggle({ name, defaultChecked, label, hint }: { name: string; defaultChecked?: boolean; label: ReactNode; hint?: ReactNode }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3">
+      <span className="relative mt-0.5 inline-flex shrink-0">
+        <input type="checkbox" name={name} defaultChecked={defaultChecked} className="peer sr-only" />
+        <span className="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500" />
+        <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+      </span>
+      <span><span className="block text-base font-semibold">{label}</span>{hint && <span className="block text-xs text-slate-500">{hint}</span>}</span>
+    </label>
+  );
+}

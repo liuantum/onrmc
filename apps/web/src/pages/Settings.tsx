@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, money, qty, session } from '../lib/api';
 import { ErrorText, Field, PageHeader, Table, formData, useSave } from '../components/ui';
+import { Download } from 'lucide-react';
+import { downloadJson, ImportResult, IRP_PORTAL } from '../components/PortalEinvoice';
 
 const TABS = ['Staff', 'Trucks', 'Grades', 'Materials', 'Suppliers', 'Plants', 'E-invoicing'] as const;
 
@@ -130,7 +132,8 @@ function Plants() {
   );
 }
 
-const PROVIDERS = [['MOCK', 'Mock (offline testing — no real IRNs)'], ['CLEARTAX', 'ClearTax GSP'], ['MASTERS_INDIA', 'Masters India GSP'], ['NIC_DIRECT', 'NIC direct API (not built)']] as const;
+const PROVIDERS = [['PORTAL', 'GST portal: upload JSON with your own GST login (no extra account)'], ['MASTERS_INDIA', 'Masters India GSP (automatic, needs their account)'], ['CLEARTAX', 'ClearTax GSP (automatic, needs their account)'], ['MOCK', 'Mock (practice only, fake IRNs)'], ['NIC_DIRECT', 'NIC direct API (not built)']] as const;
+const MODE_LABEL: Record<string, string> = { offline: 'practice · fake IRNs', sandbox: 'sandbox / test', production: 'live', portal: 'live · GST portal' };
 
 function Einvoicing() {
   const qc = useQueryClient();
@@ -164,7 +167,7 @@ function Einvoicing() {
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="card p-5">
         <h3 className="mb-1 flex items-center gap-2 font-semibold">E-invoice &amp; e-way bill
-          {s.mode && <span className={`badge ${s.mode === 'production' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{s.mode === 'offline' ? 'offline mock' : s.mode === 'sandbox' ? 'sandbox / test' : 'production'}</span>}</h3>
+          {s.mode && <span className={`badge ${s.mode === 'production' || s.mode === 'portal' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{MODE_LABEL[s.mode] ?? s.mode}</span>}</h3>
         <p className="mb-4 text-sm text-slate-500">IRNs are generated for B2B tax invoices only. Amounts sent to the portal are exactly the amounts on the invoice.</p>
         <fieldset disabled={!canEdit} className="space-y-3">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.einvoiceEnabled} onChange={(e) => setForm({ ...form, einvoiceEnabled: e.target.checked })} />Generate e-invoices (IRN)</label>
@@ -185,6 +188,13 @@ function Einvoicing() {
                 <input className="input" type="password" autoComplete="new-password" value={creds[f.key] ?? ''} placeholder={!providerChanged && s.savedCredentialKeys.includes(f.key) ? '••••••••' : ''} onChange={(e) => setCreds({ ...creds, [f.key]: e.target.value })} />
               </Field>
             ))}
+          </div>}
+          {form.provider === 'PORTAL' && <div className="space-y-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+            <p>Real IRNs with no GSP account. On each invoice: <b>Get IRN from GST portal</b> → download the JSON → upload it at <a className="text-brand-600 hover:underline" href={IRP_PORTAL} target="_blank" rel="noreferrer">einvoice1.gst.gov.in</a> (e-Invoice → Bulk Upload) → import the result. E-way bills are made on the portal and their numbers recorded here.</p>
+            {!providerChanged && <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-ghost border border-slate-200" onClick={async () => { const r = await api('/einvoice/portal-json'); if (r.payloads.length) downloadJson(`einvoices-pending-${new Date().toISOString().slice(0, 10)}.json`, r.payloads); setError(r.problems.length ? `Not included, fix first: ${r.problems.map((p: any) => `${p.number} (${p.problems.join('; ')})`).join(' · ')}` : null); setMsg(r.payloads.length ? `${r.payloads.length} invoice(s) / note(s) downloaded for bulk upload` : 'Nothing waiting for an IRN'); }}><Download size={16} />Download all pending</button>
+              <ImportResult />
+            </div>}
           </div>}
           <div className="flex gap-2">
             <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</button>

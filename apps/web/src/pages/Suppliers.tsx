@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { api, date, money } from '../lib/api';
 import { ErrorText, Field, Modal, PageHeader, Table, formData, useSave } from '../components/ui';
+import { GstinField } from '../components/GstinField';
 
 export default function Suppliers() {
   const { data } = useQuery({ queryKey: ['suppliers'], queryFn: () => api('/suppliers') });
@@ -29,8 +30,8 @@ function SupplierForm({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Add supplier" open onClose={onClose}>
       <form className="grid grid-cols-2 gap-4" onSubmit={(e) => { const d = formData(e); save.mutate({ ...d, rcmDefault: !!d.rcmDefault }); }}>
+        <div className="col-span-2"><GstinField label="GSTIN (blank if unregistered)" fill={{ name: 'name', address: 'address', city: 'city', pincode: 'pincode', stateCode: 'stateCode', phone: 'phone' }} /></div>
         <Field label="Name" className="col-span-2"><input name="name" className="input" required /></Field>
-        <Field label="GSTIN (blank if unregistered)"><input name="gstin" className="input uppercase" maxLength={15} /></Field>
         <Field label="State code (if no GSTIN)"><input name="stateCode" className="input" maxLength={2} /></Field>
         <Field label="Address" className="col-span-2"><input name="address" className="input" /></Field>
         <Field label="City"><input name="city" className="input" /></Field>

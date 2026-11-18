@@ -84,3 +84,34 @@ test('Masters India: duplicate message maps to 2150; expired token is refreshed 
   await assert.rejects(a.generateIrn(payload), (e: GspError) => e.code === '2150');
   assert.equal(calls.filter((c) => c.url.endsWith('/token-auth/')).length, 2);
 });
+
+test('Masters India: GSTIN details read from the NIC fields; "not available" is null', async () => {
+  const calls = fakeFetch((c) => {
+    if (c.url.endsWith('/token-auth/')) return { body: { token: 'jwt9' } };
+    if (c.url.includes('gstin=36AAACS1234K1ZI')) return { body: { results: { message: { Gstin: '36AAACS1234K1ZI', LegalName: 'SRI CONSTRUCTIONS PVT LTD', TradeName: 'Sri Constructions', AddrBno: '4-1', AddrBnm: 'Cyber Towers', AddrFlno: '4th Floor', AddrSt: 'Madhapur', AddrLoc: 'Hyderabad', StateCode: 36, AddrPncd: 500081, TxpType: 'REG', Status: 'ACT', BlkStatus: 'U' }, errorMessage: '', status: 'Success', code: 200 } } };
+    return { body: { results: { message: '', errorMessage: '3001: Requested data is not available', status: 'Failed', code: 204 } } };
+  });
+  const a = new MastersIndiaAdapter({ username: 'u-mi-3', password: 'p' }, '36AABCU9603R1ZM', 'production');
+  const d = await a.gstinDetails('36AAACS1234K1ZI');
+  const get = calls.find((c) => c.url.includes('/get-gstin-details/'))!;
+  assert.equal(get.method, 'GET');
+  assert.ok(get.url.startsWith('https://prod-api.mastersindia.co/api/v1/get-gstin-details/?'));
+  assert.ok(get.url.includes('user_gstin=36AABCU9603R1ZM'));
+  assert.equal(get.headers.Authorization, 'JWT jwt9');
+  assert.deepEqual(d, { gstin: '36AAACS1234K1ZI', legalName: 'SRI CONSTRUCTIONS PVT LTD', tradeName: 'Sri Constructions', address: '4-1, 4th Floor, Cyber Towers, Madhapur', city: 'Hyderabad', stateCode: '36', pincode: '500081', status: 'ACT', taxpayerType: 'REG', blocked: false });
+  assert.equal(await a.gstinDetails('29AAACS1234K1ZE'), null);
+});
+
+test('portal result: IRN rows found in nested / signed-QR shaped JSON', async () => {
+  const { parsePortalResult } = await import('../src/lib/einvoice/portal-import.js');
+  const irn = 'a'.repeat(64);
+  const qr = `h.${Buffer.from(JSON.stringify({ data: JSON.stringify({ DocNo: 'INV/26-27/0009', DocTyp: 'INV', Irn: irn }) })).toString('base64url')}.s`;
+  const rows = parsePortalResult({ Status: 1, Data: { AckNo: 182610000000001, AckDt: '19/11/2026 10:15:00', Irn: irn.toUpperCase(), SignedQRCode: qr } });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].docNo, 'INV/26-27/0009');
+  assert.equal(rows[0].irn, irn);
+  assert.equal(rows[0].ackNo, '182610000000001');
+  assert.equal(rows[0].ackDate.toISOString(), '2026-11-19T04:45:00.000Z');
+  assert.equal(parsePortalResult([{ 'Ack No': '1', 'IRN': irn, 'Doc No': 'X1' }, { foo: 1 }])[0].docNo, 'X1');
+  assert.equal(parsePortalResult({ Irn: 'short', AckNo: 1 }).length, 0);
+});

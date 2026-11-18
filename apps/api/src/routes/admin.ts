@@ -96,7 +96,7 @@ export default async function (app: FastifyInstance) {
   app.put('/platform-settings', { bodyLimit: 2 * 1024 * 1024 }, async (req) => {
     const opt = z.string().trim().max(200).nullish().transform((v) => v || null);
     const b = z.object({
-      manualEnabled: z.boolean(), upiId: opt, upiQr: z.string().startsWith('data:image/').max(1_500_000).nullish(),
+      manualEnabled: z.boolean(), upiId: z.string().trim().regex(/^[\w.-]{2,256}@[a-zA-Z][a-zA-Z0-9.]{1,63}$/, 'UPI ID looks wrong (like name@okhdfcbank)').nullish().or(z.literal('').transform(() => null)), upiQr: z.string().startsWith('data:image/').max(1_500_000).nullish(),
       bankAccountName: opt, bankAccountNo: opt, bankIfsc: z.string().trim().toUpperCase().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'IFSC looks wrong').nullish().or(z.literal('').transform(() => null)),
       bankName: opt, bankBranch: opt, instructions: z.string().max(1000).nullish(),
       razorpayEnabled: z.boolean(), razorpayKeyId: z.string().trim().regex(/^rzp_(test|live)_\w+$/, 'Razorpay key id starts with rzp_test_ or rzp_live_').nullish().or(z.literal('').transform(() => null)),

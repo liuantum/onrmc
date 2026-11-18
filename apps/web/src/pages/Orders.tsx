@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { api, dateTime, money, qty } from '../lib/api';
 import { Badge, ErrorText, Field, Modal, PageHeader, Table, formData, useSave } from '../components/ui';
+import { CustomerForm } from '../components/CustomerForm';
 
 export default function Orders() {
   const [open, setOpen] = useState(false);
@@ -34,15 +35,19 @@ function NewOrder({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: () => api('/customers'), enabled: open });
   const { data: mixes } = useQuery({ queryKey: ['mix-designs'], queryFn: () => api('/mix-designs'), enabled: open });
   const [cid, setCid] = useState('');
+  const [adding, setAdding] = useState(false);
   const save = useSave('/orders', ['orders'], onClose);
   const sites = customers?.find((c: any) => c.id === cid)?.sites ?? [];
   return (
     <Modal title="New order" open={open} onClose={onClose}>
       <form className="grid grid-cols-2 gap-4" onSubmit={(e) => { const d = formData(e); save.mutate({ ...d, scheduledAt: new Date(d.scheduledAt).toISOString() }); }}>
         <Field label="Customer" className="col-span-2">
-          <select name="customerId" className="input" required value={cid} onChange={(e) => setCid(e.target.value)}>
-            <option value="">Select customer</option>{customers?.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="flex gap-2">
+            <select name="customerId" className="input" required value={cid} onChange={(e) => setCid(e.target.value)}>
+              <option value="">Select customer</option>{customers?.map((c: any) => <option key={c.id} value={c.id}>{c.name}{c.gstin ? ` · ${c.gstin}` : ''}</option>)}
+            </select>
+            <button type="button" className="btn-ghost shrink-0 border border-slate-200" onClick={() => setAdding(true)}><Plus size={15} />New</button>
+          </div>
         </Field>
         <Field label="Site" className="col-span-2">
           <select name="siteId" className="input" required><option value="">{cid ? (sites.length ? 'Select site' : 'Add a site under Customers first') : 'Pick customer first'}</option>{sites.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
@@ -56,6 +61,9 @@ function NewOrder({ open, onClose }: { open: boolean; onClose: () => void }) {
         <div className="col-span-2 flex justify-end gap-2"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={save.isPending}>Save order</button></div>
       </form>
       <ErrorText error={save.error} />
+      <Modal title="New customer" open={adding} onClose={() => setAdding(false)}>
+        <CustomerForm withSite onSaved={(c) => { setCid(c.id); setAdding(false); }} />
+      </Modal>
     </Modal>
   );
 }

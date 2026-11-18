@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { Printer } from 'lucide-react';
 import { api, date, dateTime, money, qty } from '../lib/api';
 import { Badge, ErrorText, Modal, PageHeader, useSave } from '../components/ui';
+import { ImportResult, PortalIrnDialog, RecordEwbDialog, useEinvoiceProvider } from '../components/PortalEinvoice';
 import { NoteForm } from './Notes';
 
 function words(n: number): string {
@@ -135,7 +136,7 @@ export const IRN_REASONS = [['1', 'Duplicate'], ['2', 'Data entry mistake'], ['3
 const EWB_CANCEL_REASONS = [['1', 'Duplicate'], ['2', 'Order cancelled'], ['3', 'Data entry mistake'], ['4', 'Others']];
 const VEHICLE_REASONS = [['1', 'Due to break down'], ['2', 'Due to transhipment'], ['3', 'Others'], ['4', 'First time']];
 
-type Dialog = null | 'irn' | 'irnCancel' | 'ewb' | 'vehicle' | 'ewbCancel';
+type Dialog = null | 'irn' | 'irnCancel' | 'ewb' | 'vehicle' | 'ewbCancel' | 'portalIrn' | 'recordEwb';
 
 function EinvoicePanel({ inv }: { inv: any }) {
   const [dlg, setDlg] = useState<Dialog>(null);
@@ -143,6 +144,7 @@ function EinvoicePanel({ inv }: { inv: any }) {
   const post = useAction('POST', () => setDlg(null));
   const patch = useAction('PATCH', () => setDlg(null));
   const ewb = activeEwb(inv);
+  const portal = useEinvoiceProvider() === 'PORTAL';
   if (inv.type !== 'TAX_INVOICE' || inv.einvoiceStatus === 'NOT_REQUIRED') {
     return inv.type === 'TAX_INVOICE' ? <p className="no-print mx-auto mb-3 max-w-4xl text-xs text-slate-400">E-invoice not required for this invoice (B2C or e-invoicing switched off).</p> : null;
   }
@@ -156,8 +158,9 @@ function EinvoicePanel({ inv }: { inv: any }) {
           {ewb && <><span className="ml-3 font-medium">E-way bill</span><span className="font-mono">{ewb.ewbNo}</span></>}
         </div>
         <div className="flex flex-wrap gap-2">
-          {irnOpen && inv.status !== 'CANCELLED' && <button className="btn-primary" onClick={() => setDlg('irn')}>Generate IRN</button>}
-          {inv.einvoiceStatus === 'GENERATED' && !ewb && <button className="btn-primary" onClick={() => setDlg('ewb')}>Generate e-way bill</button>}
+          {irnOpen && inv.status !== 'CANCELLED' && <button className="btn-primary" onClick={() => setDlg(portal ? 'portalIrn' : 'irn')}>{portal ? 'Get IRN from GST portal' : 'Generate IRN'}</button>}
+          {inv.einvoiceStatus === 'GENERATED' && !ewb && (portal ? <button className="btn-primary" onClick={() => setDlg('recordEwb')}>Record e-way bill</button> : <button className="btn-primary" onClick={() => setDlg('ewb')}>Generate e-way bill</button>)}
+          {inv.einvoiceStatus === 'GENERATED' && !inv.signedQr && portal && <ImportResult />}
           {ewb && <button className="btn-ghost" onClick={() => setDlg('vehicle')}>Update vehicle</button>}
           {ewb && <button className="btn-ghost" onClick={() => setDlg('ewbCancel')}>Cancel e-way bill</button>}
           {inv.einvoiceStatus === 'GENERATED' && !ewb && within24 && <button className="btn-danger" onClick={() => setDlg('irnCancel')}>Cancel IRN</button>}
@@ -174,15 +177,17 @@ function EinvoicePanel({ inv }: { inv: any }) {
       </Modal>
 
       <ReasonDialog title="Cancel IRN" open={dlg === 'irnCancel'} onClose={close} reasons={IRN_REASONS} busy={post.isPending} error={post.error}
-        note="After the IRN is cancelled you can cancel this invoice. The same invoice number cannot be registered again."
+        note={`${portal ? 'Cancel the IRN on einvoice1.gst.gov.in first; this records it in onrmc. ' : ''}After the IRN is cancelled you can cancel this invoice. The same invoice number cannot be registered again.`}
         confirm="Cancel IRN" onSubmit={(reasonCode, remark) => post.mutate({ path: `/invoices/${inv.id}/einvoice/cancel`, body: { reasonCode, remark } })} />
 
       {dlg === 'ewb' && <EwbDialog inv={inv} onClose={close} act={post} />}
+      {dlg === 'portalIrn' && <PortalIrnDialog inv={inv} onClose={close} />}
+      {dlg === 'recordEwb' && <RecordEwbDialog inv={inv} onClose={close} />}
 
       {dlg === 'vehicle' && ewb && <VehicleDialog ewb={ewb} onClose={close} act={patch} />}
 
       <ReasonDialog title={`Cancel e-way bill ${ewb?.ewbNo ?? ''}`} open={dlg === 'ewbCancel'} onClose={close} reasons={EWB_CANCEL_REASONS} busy={post.isPending} error={post.error}
-        note="E-way bills can be cancelled only within 24 hours of generation, and only if the goods have not been verified in transit."
+        note={`${portal ? 'Cancel it on ewaybillgst.gov.in first; this records it in onrmc. ' : ''}E-way bills can be cancelled only within 24 hours of generation, and only if the goods have not been verified in transit.`}
         confirm="Cancel e-way bill" onSubmit={(reasonCode, remark) => post.mutate({ path: `/ewaybill/${ewb.id}/cancel`, body: { reasonCode, remark } })} />
     </div>
   );

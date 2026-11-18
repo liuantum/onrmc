@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Check, CreditCard, QrCode } from 'lucide-react';
 import { api, date, money } from '../lib/api';
 import { Badge, ErrorText, Field, Modal, PageHeader, Table, formData } from '../components/ui';
+import { UpiQr } from '../components/UpiQr';
 
 declare global { interface Window { Razorpay?: any; Cashfree?: any } }
 
@@ -159,8 +160,10 @@ export default function Subscription() {
         {pick && m.manual && <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-3 text-sm">
             <div className="rounded-lg bg-brand-50 p-3 text-center"><div className="text-xs text-slate-500">Amount to pay</div><div className="text-2xl font-bold text-brand-700">{money(q(pick.id).total)}</div></div>
-            {m.manual.upiQr && <img src={m.manual.upiQr} alt="UPI QR code" className="mx-auto w-52 rounded-lg border border-slate-200" />}
-            {m.manual.upiId && <div className="text-center">UPI ID: <span className="font-mono font-medium">{m.manual.upiId}</span></div>}
+            {m.manual.upiId
+              ? <UpiQr upiId={m.manual.upiId} payee={m.manual.payeeName} amount={Number(q(pick.id).total)} note={`onrmc ${pick.name} ${cycle === 'YEARLY' ? '1y' : '1m'}`} />
+              : m.manual.upiQr && <img src={m.manual.upiQr} alt="UPI QR code" className="mx-auto w-52 rounded-lg border border-slate-200" />}
+            {m.manual.upiId && <div className="text-center">UPI ID: <span className="font-mono font-medium">{m.manual.upiId}</span> <button type="button" className="text-xs text-brand-600" onClick={() => navigator.clipboard?.writeText(m.manual.upiId)}>copy</button></div>}
             {m.manual.bankAccountNo && <div className="rounded-lg border border-slate-200 p-3">
               <div className="mb-1 flex items-center gap-1.5 font-medium"><Building2 size={15} />Bank transfer (NEFT / RTGS / IMPS)</div>
               <div>{m.manual.bankAccountName}</div><div>A/c <span className="font-mono">{m.manual.bankAccountNo}</span></div>
