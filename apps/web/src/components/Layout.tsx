@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BarChart3, Boxes, Building2, ClipboardList, CreditCard, FileMinus, FileText, HandCoins, Receipt, Store, Gauge, LogOut, Map, Factory, Truck, Users, Wallet, Crown, Settings } from 'lucide-react';
+import { BarChart3, Boxes, Building2, ClipboardList, CreditCard, FileMinus, FileText, HandCoins, Receipt, Store, Gauge, LogOut, Map, Factory, Truck, Users, Wallet, Crown, Settings, BadgeIndianRupee, Landmark } from 'lucide-react';
 import { session } from '../lib/api';
+import { SubscriptionBanner } from '../pages/Subscription';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: Gauge, roles: ['OWNER', 'MANAGER', 'ACCOUNTANT'] },
@@ -19,8 +20,11 @@ const NAV = [
   { to: '/inventory', label: 'Aggregates & stock', icon: Boxes, roles: ['OWNER', 'MANAGER', 'STORE', 'BATCHING'] },
   { to: '/insights', label: 'Owner insights', icon: BarChart3, roles: ['OWNER'] },
   { to: '/settings', label: 'Setup', icon: Settings, roles: ['OWNER', 'MANAGER'] },
+  { to: '/subscription', label: 'Subscription', icon: BadgeIndianRupee, roles: ['OWNER'] },
   { to: '/admin', label: 'Tenants', icon: Building2, roles: ['SUPER_ADMIN'] },
   { to: '/admin/plans', label: 'Plans', icon: Crown, roles: ['SUPER_ADMIN'] },
+  { to: '/admin/payments', label: 'Payments', icon: BadgeIndianRupee, roles: ['SUPER_ADMIN'] },
+  { to: '/admin/payment-settings', label: 'Payment settings', icon: Landmark, roles: ['SUPER_ADMIN'] },
 ];
 
 export default function Layout() {
@@ -54,6 +58,7 @@ export default function Layout() {
             {NAV.filter((n) => n.roles.includes(s.user.role)).map((n) => <option key={n.to} value={n.to}>{n.label}</option>)}
           </select>
         </header>
+        {s.user.role !== 'SUPER_ADMIN' && <SubscriptionBanner />}
         <main className="mx-auto w-full max-w-7xl flex-1 p-4 md:p-8"><Outlet /></main>
       </div>
     </div>

@@ -17,8 +17,9 @@ export async function latestSubscription(tenantId: string, tx: Tx = prisma) {
  * subscription page still work). A subscription the super admin marks SUSPENDED/CANCELLED is paused at once.
  */
 export async function subscriptionState(tenantId: string) {
-  const [sub, ps] = await Promise.all([latestSubscription(tenantId), platformSettings()]);
+  const [sub, ps, tenant] = await Promise.all([latestSubscription(tenantId), platformSettings(), prisma.tenant.findUnique({ where: { id: tenantId }, select: { active: true } })]);
   const now = Date.now();
+  if (!tenant?.active) return { state: 'PAUSED' as SubState, plan: null, endsAt: null, graceUntil: null, daysLeft: 0, reminder: true, message: 'This account has been suspended by onrmc. Please contact support.' };
   if (!sub) return { state: 'PAUSED' as SubState, plan: null, endsAt: null, graceUntil: null, daysLeft: 0, reminder: true, message: 'No subscription — choose a plan to continue.' };
   const ends = sub.endsAt.getTime(), graceUntil = new Date(ends + ps.graceDays * DAY);
   const daysLeft = Math.ceil((ends - now) / DAY);
@@ -79,7 +80,7 @@ export async function activatePayment(paymentId: string, extra: { gatewayPayment
     // renewals continue from the current expiry; a lapsed or suspended account starts today
     const base = cur && cur.endsAt > now && !['SUSPENDED', 'CANCELLED'].includes(cur.status) ? cur.endsAt : now;
     const endsAt = new Date(base); endsAt.setMonth(endsAt.getMonth() + p.months);
-    await tx.subscription.create({ data: { tenantId: p.tenantId, planId: p.planId, status: 'ACTIVE', billingCycle: p.billingCycle, startsAt: now, endsAt } });
+    await tx.subscription.create({ data: { tenantId: p.tenantId, planId: p.planId, status: 'ACTIVE', billingCycle: p.billingCycle, startsAt: base, endsAt } });
     const ps = await platformSettings(tx);
     await tx.subscriptionInvoice.create({ data: {
       number: await nextPlatformNumber(tx, 'SUB'), paymentId: p.id, tenantId: p.tenantId,

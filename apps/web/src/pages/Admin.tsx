@@ -18,7 +18,7 @@ export default function Admin() {
       <PageHeader title="Plant owners" subtitle="onrmc subscriptions" actions={<button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} />Onboard plant owner</button>} />
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Tenants" value={stats?.tenants ?? '—'} /><Stat label="Paying" value={stats?.active ?? '—'} tone="green" />
-        <Stat label="On trial" value={stats?.trial ?? '—'} tone="blue" /><Stat label="MRR" value={stats ? money(stats.mrr) : '—'} tone="green" />
+        <Stat label="On trial" value={stats?.trial ?? '—'} tone="blue" /><Stat label="MRR" value={stats ? money(stats.mrr) : '—'} tone="green" hint={stats?.pendingPayments ? `${stats.pendingPayments} payment(s) to verify` : undefined} />
       </div>
       <Table rows={tenants} cols={[
         { key: 'name', label: 'Company', render: (t: any) => <><div className="font-medium">{t.name}</div><div className="text-xs text-slate-500">{t.gstin}</div></> },
