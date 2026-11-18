@@ -5,7 +5,7 @@ import { requireRole, tid } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { bad, HttpError, notFound } from '../lib/errors.js';
 import {
-  adapterFor, buildIrpPayload, CREDENTIAL_FIELDS, EinvoiceValidationError, encryptJson, estimateRoadKm, getAdapter, getSettings,
+  adapterFor, providerMode, buildIrpPayload, CREDENTIAL_FIELDS, EinvoiceValidationError, encryptJson, estimateRoadKm, getAdapter, getSettings,
   GspError, invoiceForIrp, irpDate, normaliseVehicleNo, notRequiredReason, pincodeError, stateError, gstinError, vehicleNoError,
 } from '../lib/einvoice/index.js';
 import { decryptJson } from '../lib/einvoice/crypto.js';
@@ -17,7 +17,7 @@ const reasonCode = z.enum(['1', '2', '3', '4']);
 /** Turns provider / validation failures into clean 4xx/5xx responses. */
 function asHttp(e: unknown): Error {
   if (e instanceof EinvoiceValidationError) return new HttpError(422, `Cannot send to the portal: ${e.problems.join('; ')}`);
-  if (e instanceof GspError) return new HttpError(e.code === 'NO_CREDENTIALS' || e.code === 'NOT_IMPLEMENTED' ? 400 : 502, `Portal error${e.code ? ` ${e.code}` : ''}: ${e.message}`);
+  if (e instanceof GspError) return new HttpError(e.code === 'NO_CREDENTIALS' || e.code === 'NOT_IMPLEMENTED' || e.code === 'AUTH' ? 400 : 502, `Portal error${e.code ? ` ${e.code}` : ''}: ${e.message}`);
   return e as Error;
 }
 
@@ -38,7 +38,7 @@ export default async function (app: FastifyInstance) {
     if (s?.credentialsEnc) { try { savedKeys = Object.keys(decryptJson(s.credentialsEnc)); } catch { savedKeys = []; } }
     return {
       einvoiceEnabled: s?.einvoiceEnabled ?? false, ewaybillEnabled: s?.ewaybillEnabled ?? false, provider,
-      credentialFields: CREDENTIAL_FIELDS, savedCredentialKeys: savedKeys, encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16,
+      credentialFields: CREDENTIAL_FIELDS, savedCredentialKeys: savedKeys, mode: providerMode(provider, s?.credentialsEnc ?? null), encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16,
     };
   });
 
@@ -69,7 +69,8 @@ export default async function (app: FastifyInstance) {
 
   app.post('/einvoice/test', { preHandler: requireRole('MANAGER') }, async (req) => {
     const s = await getSettings(tid(req));
-    try { return await adapterFor(s?.provider ?? 'MOCK', s?.credentialsEnc ?? null).testConnection(); } catch (e) { throw asHttp(e); }
+    const t = await prisma.tenant.findUnique({ where: { id: tid(req) }, select: { gstin: true } });
+    try { return await adapterFor(s?.provider ?? 'MOCK', s?.credentialsEnc ?? null, t?.gstin).testConnection(); } catch (e) { throw asHttp(e); }
   });
 
   // ───── Seller details needed on e-invoices ─────
