@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BarChart3, Boxes, Building2, ClipboardList, CreditCard, FileMinus, FileText, HandCoins, Receipt, Store, Gauge, LogOut, Map, Factory, Truck, Users, Wallet, Crown, Settings, BadgeIndianRupee, Landmark } from 'lucide-react';
+import { BarChart3, Boxes, Building2, ClipboardList, CreditCard, FileMinus, FileText, HandCoins, Receipt, Store, Gauge, LogOut, Map, Factory, Truck, Users, Wallet, Crown, Settings, BadgeIndianRupee, Landmark, Wrench, FlaskConical } from 'lucide-react';
 import { session } from '../lib/api';
 import { SubscriptionBanner } from '../pages/Subscription';
 
@@ -9,6 +9,8 @@ const NAV = [
   { to: '/batching', label: 'Mixing / Batching', icon: Factory, roles: ['OWNER', 'MANAGER', 'BATCHING'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['OWNER', 'MANAGER', 'DISPATCH'] },
   { to: '/fleet', label: 'Live fleet', icon: Map, roles: ['OWNER', 'MANAGER', 'DISPATCH'] },
+  { to: '/maintenance', label: 'Truck maintenance', icon: Wrench, roles: ['OWNER', 'MANAGER', 'DISPATCH', 'ACCOUNTANT'] },
+  { to: '/qc', label: 'Quality (cubes)', icon: FlaskConical, roles: ['OWNER', 'MANAGER', 'BATCHING', 'DISPATCH', 'SALES'] },
   { to: '/invoices', label: 'Billing', icon: FileText, roles: ['OWNER', 'MANAGER', 'ACCOUNTANT', 'SALES'] },
   { to: '/notes', label: 'Credit / debit notes', icon: FileMinus, roles: ['OWNER', 'MANAGER', 'ACCOUNTANT'] },
   { to: '/purchase-bills', label: 'Purchase bills', icon: Receipt, roles: ['OWNER', 'MANAGER', 'ACCOUNTANT'] },

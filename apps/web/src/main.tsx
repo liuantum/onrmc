@@ -30,6 +30,8 @@ import Plans from './pages/Plans';
 import Subscription, { SubscriptionInvoiceView } from './pages/Subscription';
 import AdminPayments, { AdminPaymentSettings } from './pages/AdminPayments';
 import { useParams } from 'react-router-dom';
+import Maintenance from './pages/Maintenance';
+import Qc from './pages/Qc';
 
 const SubInvoice = () => <SubscriptionInvoiceView id={useParams().id!} />;
 
@@ -60,6 +62,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="batching" element={<Batching />} />
             <Route path="dispatch" element={<Dispatch />} />
             <Route path="fleet" element={<Fleet />} />
+            <Route path="maintenance" element={<Maintenance />} />
+            <Route path="qc" element={<Qc />} />
             <Route path="invoices" element={<Invoices />} />
             <Route path="invoices/:id" element={<InvoiceView />} />
             <Route path="notes" element={<Notes />} />

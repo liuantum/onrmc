@@ -14,6 +14,8 @@ import purchaseRoutes from './routes/purchases.js';
 import accountRoutes from './routes/accounts.js';
 import gpsRoutes from './routes/gps.js';
 import analyticsRoutes from './routes/analytics.js';
+import fleetRoutes from './routes/fleet.js';
+import qcRoutes from './routes/qc.js';
 import subscriptionRoutes, { webhookRoutes } from './routes/subscription.js';
 import { cachedState, sweepSubscriptions } from './lib/subscription.js';
 import type { JwtUser } from './lib/auth.js';
@@ -59,6 +61,8 @@ export async function build() {
   await app.register(accountRoutes, { prefix: '/api/accounts' });
   await app.register(gpsRoutes, { prefix: '/api/gps' });
   await app.register(analyticsRoutes, { prefix: '/api/analytics' });
+  await app.register(fleetRoutes, { prefix: '/api' });
+  await app.register(qcRoutes, { prefix: '/api' });
   await app.register(subscriptionRoutes, { prefix: '/api/subscription' });
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
   return app;
