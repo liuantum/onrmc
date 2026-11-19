@@ -154,6 +154,55 @@ export function AdminPaymentSettings() {
           <button className="btn-primary">Save settings</button>
         </div>
       </form>
+      <AdminGstinLookup />
     </>
+  );
+}
+
+/** onrmc's own Masters India account: GSTIN → legal name, address, PIN for every plant. */
+function AdminGstinLookup() {
+  const qc = useQueryClient();
+  const { data: g } = useQuery({ queryKey: ['gstin-lookup'], queryFn: () => api('/admin/gstin-lookup') });
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [probe, setProbe] = useState('');
+  if (!g) return null;
+  const saved = (k: string) => (g.savedKeys.includes(k) ? 'saved · leave blank to keep' : 'not set');
+  async function save(e: React.FormEvent<HTMLFormElement>) {
+    const d = formData(e);
+    setErr(null); setOk(null);
+    try {
+      await api('/admin/gstin-lookup', { method: 'PUT', body: { ...d, enabled: !!d.enabled } });
+      setOk('Saved'); qc.invalidateQueries({ queryKey: ['gstin-lookup'] });
+      (e.target as HTMLFormElement).querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => (i.value = ''));
+    } catch (x) { setErr((x as Error).message); }
+  }
+  async function test() {
+    setErr(null); setOk(null);
+    try { const r = await api('/admin/gstin-lookup/test', { body: { gstin: probe || undefined } }); r.ok ? setOk(r.message) : setErr(r.message); } catch (x) { setErr((x as Error).message); }
+  }
+  return (
+    <form onSubmit={save} className="card mt-6 p-5">
+      <div className="mb-1"><Toggle name="enabled" defaultChecked={g.enabled} label="GSTIN autofill for all plants (Masters India)"
+        hint="When a plant types a customer's GSTIN, the legal name, address, PIN and GST status are filled from the GST system through your Masters India account. Plants need no account of their own." /></div>
+      {!g.encryptionReady && <p className="my-2 text-xs text-red-600">EINVOICE_ENC_KEY is not set on the server, so these credentials can't be stored.</p>}
+      <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <Field label="GSTIN the account is registered to"><input name="gstin" className="input uppercase" maxLength={15} defaultValue={g.gstin ?? ''} /></Field>
+        <Field label="Environment"><select name="environment" className="input" defaultValue={g.environment}><option value="production">Production (live)</option><option value="sandbox">Sandbox (test)</option></select></Field>
+        <div />
+        <Field label={`Username (${saved('username')})`}><input name="username" type="password" className="input" autoComplete="off" /></Field>
+        <Field label={`Password (${saved('password')})`}><input name="password" type="password" className="input" autoComplete="new-password" /></Field>
+        <div />
+        <Field label={`Client ID, if given (${saved('clientId')})`}><input name="clientId" type="password" className="input" autoComplete="off" /></Field>
+        <Field label={`Client secret, if given (${saved('clientSecret')})`}><input name="clientSecret" type="password" className="input" autoComplete="off" /></Field>
+      </div>
+      <div className="mt-4 flex flex-wrap items-end gap-2">
+        <button className="btn-primary">Save</button>
+        <input className="input w-56 uppercase" maxLength={15} placeholder="GSTIN to test (optional)" value={probe} onChange={(e) => setProbe(e.target.value.toUpperCase())} />
+        <button type="button" className="btn-ghost" onClick={test}>Test lookup</button>
+      </div>
+      {ok && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{ok}</p>}
+      <ErrorText error={err} />
+    </form>
   );
 }

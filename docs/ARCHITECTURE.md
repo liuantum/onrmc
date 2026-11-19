@@ -123,6 +123,9 @@ Code: `apps/api/src/lib/einvoice/` (payload, validation, adapters) and `apps/api
 - **Going live:** with no GSP, choose *GST portal* and switch e-invoicing on. For automatic IRNs, create the
   company's e-invoice API user on the IRP portal for ClearTax or Masters India, save those credentials (Environment
   defaults to production) and press *Test connection*.
+- **GSTIN autofill for every plant:** the super admin saves onrmc's own Masters India account under Payment
+  settings → GSTIN autofill (`GET|PUT /admin/gstin-lookup`, `POST /admin/gstin-lookup/test`). Lookups use the
+  plant's own GSP first, then this account, and are cached for a day.
 
 ## 4b. Inventory and cost of materials in the books
 

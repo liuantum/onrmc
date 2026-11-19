@@ -11,6 +11,8 @@ import { decryptJson } from '../lib/einvoice/crypto.js';
 import { cashfree, razorpay } from '../lib/gateways.js';
 import { activatePayment, clearStateCache, platformSettings, sweepSubscriptions } from '../lib/subscription.js';
 import { gatewayMode } from './subscription.js';
+import { clearGstinCache, platformGstinDetails } from './gstin.js';
+import { gstinError } from '../lib/einvoice/index.js';
 
 const SECRET_FIELDS = ['razorpaySecretEnc', 'razorpayWebhookEnc', 'cashfreeSecretEnc', 'cashfreeWebhookEnc'] as const;
 const enc = (v: string) => encryptJson({ v });
@@ -89,6 +91,7 @@ export default async function (app: FastifyInstance) {
     const ps = await platformSettings();
     const out: Record<string, unknown> = { ...ps };
     for (const f of SECRET_FIELDS) { out[f.replace(/Enc$/, 'Saved')] = !!ps[f]; delete out[f]; }
+    delete out.gstinLookupEnc;
     return { ...out, razorpayMode: gatewayMode.razorpay(ps.razorpayKeyId), cashfreeMode: gatewayMode.cashfree(ps.cashfreeEnv), encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16 };
   };
   app.get('/platform-settings', view);
@@ -136,6 +139,44 @@ export default async function (app: FastifyInstance) {
       return cashfree.test(ps.cashfreeEnv, ps.cashfreeAppId, s);
     }
     throw notFound();
+  });
+
+  // ───── GSTIN lookup for all plants (onrmc's own Masters India account; secrets write-only) ─────
+  const lookupView = async () => {
+    const ps = await platformSettings();
+    let creds: Record<string, string> = {};
+    try { creds = ps.gstinLookupEnc ? decryptJson<Record<string, string>>(ps.gstinLookupEnc) : {}; } catch { creds = {}; }
+    return { enabled: ps.gstinLookupEnabled, gstin: ps.gstinLookupGstin, environment: creds.environment ?? 'production', savedKeys: Object.keys(creds).filter((k) => k !== 'environment'), encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16 };
+  };
+  app.get('/gstin-lookup', lookupView);
+  app.put('/gstin-lookup', async (req) => {
+    const b = z.object({
+      enabled: z.boolean(), gstin: z.string().trim().toUpperCase().nullish().transform((v) => v || null),
+      environment: z.enum(['production', 'sandbox']).default('production'),
+      username: z.string().optional(), password: z.string().optional(), clientId: z.string().optional(), clientSecret: z.string().optional(),
+    }).parse(req.body);
+    if (b.gstin) { const e = gstinError(b.gstin, 'Account'); if (e) throw bad(e); }
+    const ps = await platformSettings();
+    const prev = ps.gstinLookupEnc ? decryptJson<Record<string, string>>(ps.gstinLookupEnc) : {};
+    const next: Record<string, string> = { ...prev, environment: b.environment };
+    for (const k of ['username', 'password', 'clientId', 'clientSecret'] as const) if (b[k]?.trim()) next[k] = b[k]!.trim();
+    if (b.enabled && (!b.gstin || !next.username || !next.password)) throw bad('Add the GSTIN, username and password of the Masters India account before switching lookups on');
+    let gstinLookupEnc: string;
+    try { gstinLookupEnc = encryptJson(next); } catch (e) { throw bad((e as Error).message); }
+    await prisma.platformSettings.update({ where: { id: 'platform' }, data: { gstinLookupEnabled: b.enabled, gstinLookupGstin: b.gstin, gstinLookupEnc } });
+    clearGstinCache();
+    await audit(req, 'GSTIN_LOOKUP_SETTINGS', 'PlatformSettings', 'platform', { enabled: b.enabled, gstin: b.gstin, environment: b.environment, keysChanged: ['username', 'password', 'clientId', 'clientSecret'].filter((k) => b[k as 'username']?.trim()) });
+    return lookupView();
+  });
+  app.post('/gstin-lookup/test', async (req) => {
+    const { gstin } = z.object({ gstin: z.string().trim().toUpperCase().optional() }).parse(req.body ?? {});
+    const ps = await platformSettings();
+    const g = gstin || ps.gstinLookupGstin;
+    if (!g) throw bad('Enter a GSTIN to look up');
+    try {
+      const d = await platformGstinDetails(g, true);
+      return d ? { ok: true, message: `Found: ${d.legalName}${d.address ? `, ${d.address}` : ''}${d.pincode ? ` ${d.pincode}` : ''} (status ${d.status ?? '?'})`, details: d } : { ok: false, message: 'Masters India answered, but has no record of that GSTIN' };
+    } catch (e) { return { ok: false, message: (e as Error).message }; }
   });
 
   // ───── Subscription payments ─────

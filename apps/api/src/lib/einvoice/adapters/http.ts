@@ -6,7 +6,7 @@ export async function gspFetch(url: string, init: { method: string; headers: Rec
   try {
     r = await fetch(url, { method: init.method, headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...init.headers }, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
-    throw new GspError(`Could not reach the provider (${(e as Error).name === 'TimeoutError' ? 'timed out' : (e as Error).message}). Try again; if an IRN was created it will be fetched on retry.`, 'NETWORK');
+    throw new GspError(`Could not reach the provider (${(e as Error).name === 'TimeoutError' ? 'timed out' : (e as Error).message}). Try again.`, 'NETWORK');
   }
   const text = await r.text();
   let json: any = null;

@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { requireRole, tid } from '../lib/auth.js';
 import { adapterFor, getSettings, gstinError, GspError, STATE_CODES, type GstinDetails } from '../lib/einvoice/index.js';
+import { decryptJson } from '../lib/einvoice/crypto.js';
+import { MastersIndiaAdapter } from '../lib/einvoice/adapters/mastersindia.js';
+import { envOf } from '../lib/einvoice/adapters/http.js';
+import { platformSettings } from '../lib/subscription.js';
 
 /** 4th PAN character → kind of taxpayer. */
 const PAN_KIND: Record<string, string> = {
@@ -11,6 +15,22 @@ const PAN_KIND: Record<string, string> = {
 
 const cache = new Map<string, { at: number; d: GstinDetails | null }>();
 const DAY = 864e5;
+export const clearGstinCache = () => cache.clear();
+
+/**
+ * onrmc's own Masters India account, set once by the super admin, so every plant gets name / address
+ * lookups without an account of its own. Returns undefined when it isn't set up or is switched off.
+ */
+export async function platformGstinDetails(gstin: string, ignoreSwitch = false): Promise<GstinDetails | null | undefined> {
+  const ps = await platformSettings();
+  if ((!ps.gstinLookupEnabled && !ignoreSwitch) || !ps.gstinLookupEnc || !ps.gstinLookupGstin) {
+    if (ignoreSwitch) throw new GspError('Save the Masters India GSTIN, username and password first', 'NO_CREDENTIALS');
+    return undefined;
+  }
+  const c = decryptJson<Record<string, string>>(ps.gstinLookupEnc);
+  if (!c.username || !c.password) throw new GspError('Masters India username or password is missing', 'NO_CREDENTIALS');
+  return new MastersIndiaAdapter({ username: c.username, password: c.password, clientId: c.clientId, clientSecret: c.clientSecret }, ps.gstinLookupGstin, envOf(c)).gstinDetails(gstin);
+}
 
 /**
  * Everything onrmc can learn from a GSTIN.
@@ -41,17 +61,25 @@ export async function lookupGstin(tenantId: string, raw: string) {
   else {
     const s = await getSettings(tenantId);
     const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { gstin: true } });
+    let answered = false;
     try {
-      const a = s ? adapterFor(s.provider, s.credentialsEnc, t?.gstin) : null;
-      if (a?.gstinDetails) {
-        details = await a.gstinDetails(gstin);
-        cache.set(gstin, { at: Date.now(), d: details });
-        source = details ? 'gst' : null;
-        if (!details) note = 'The GST system has no record of this GSTIN. Check it with the customer.';
-      } else note = 'Name and address need a connected GSP (Settings → E-invoicing). State and PAN are filled from the GSTIN.';
-    } catch (e) {
-      note = e instanceof GspError ? `GST lookup failed: ${e.message}` : 'GST lookup failed';
+      // 1. the plant's own GSP, if it has one that can look up GSTINs
+      let a = null;
+      try { a = s ? adapterFor(s.provider, s.credentialsEnc, t?.gstin) : null; } catch { a = null; }
+      if (a?.gstinDetails) { details = await a.gstinDetails(gstin); answered = true; }
+    } catch (e) { note = e instanceof GspError ? `GST lookup failed: ${e.message}` : 'GST lookup failed'; }
+    if (!answered) {
+      // 2. onrmc's platform account
+      try {
+        const d = await platformGstinDetails(gstin);
+        if (d !== undefined) { details = d; answered = true; note = null; }
+      } catch (e) { note = e instanceof GspError ? `GST lookup failed: ${e.message}` : 'GST lookup failed'; }
     }
+    if (answered) {
+      cache.set(gstin, { at: Date.now(), d: details });
+      source = details ? 'gst' : null;
+      if (!details) note = 'The GST system has no record of this GSTIN. Check it with the customer.';
+    } else if (!note) note = 'Name and address lookups are not switched on yet. State and PAN are filled from the GSTIN.';
   }
   const saved = cust ? { name: cust.name, address: cust.billingAddress, city: cust.city, pincode: cust.pincode, phone: cust.phone, email: cust.email }
     : supp ? { name: supp.name, address: supp.address, city: supp.city, pincode: supp.pincode, phone: supp.phone, email: supp.email } : null;
