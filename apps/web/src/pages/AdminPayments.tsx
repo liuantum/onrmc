@@ -154,65 +154,6 @@ export function AdminPaymentSettings() {
           <button className="btn-primary">Save settings</button>
         </div>
       </form>
-      <AdminGstinLookup />
     </>
-  );
-}
-
-/** onrmc's own GSTIN lookup account (Cashfree Verify GSTIN or Masters India): fills name and address for every plant, no captcha. */
-function AdminGstinLookup() {
-  const qc = useQueryClient();
-  const { data: g } = useQuery({ queryKey: ['gstin-lookup'], queryFn: () => api('/admin/gstin-lookup') });
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-  const [probe, setProbe] = useState('');
-  const [provider, setProvider] = useState<string | null>(null);
-  if (!g) return null;
-  const p = provider ?? g.provider;
-  const changed = p !== g.provider;
-  const saved = (k: string) => (!changed && g.savedKeys.includes(k) ? 'saved · leave blank to keep' : 'not set');
-  async function save(e: React.FormEvent<HTMLFormElement>) {
-    const d = formData(e);
-    setErr(null); setOk(null);
-    try {
-      await api('/admin/gstin-lookup', { method: 'PUT', body: { ...d, provider: p, enabled: !!d.enabled } });
-      setOk('Saved'); setProvider(null); qc.invalidateQueries({ queryKey: ['gstin-lookup'] });
-      (e.target as HTMLFormElement).querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => (i.value = ''));
-    } catch (x) { setErr((x as Error).message); }
-  }
-  async function test() {
-    setErr(null); setOk(null);
-    try { const r = await api('/admin/gstin-lookup/test', { body: { gstin: probe || undefined } }); r.ok ? setOk(r.message) : setErr(r.message); } catch (x) { setErr((x as Error).message); }
-  }
-  return (
-    <form onSubmit={save} className="card mt-6 p-5">
-      <div className="mb-1"><Toggle name="enabled" defaultChecked={g.enabled} label="Automatic GSTIN fill for all plants"
-        hint="When anyone types a GSTIN, the legal name, address, PIN and GST status fill in by themselves through your account. Plants need nothing. Until this is on, they fill it by typing the GST portal's captcha." /></div>
-      {!g.encryptionReady && <p className="my-2 text-xs text-red-600">EINVOICE_ENC_KEY is not set on the server, so these keys can't be stored.</p>}
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <Field label="Service"><select className="input" value={p} onChange={(e) => setProvider(e.target.value)}><option value="cashfree">Cashfree · Verify GSTIN</option><option value="mastersindia">Masters India</option></select></Field>
-        <Field label="Environment"><select name="environment" className="input" defaultValue={g.environment}><option value="production">Production (live)</option><option value="sandbox">Sandbox (test data only)</option></select></Field>
-        {p === 'mastersindia' ? <Field label="GSTIN the account is registered to"><input name="gstin" className="input uppercase" maxLength={15} defaultValue={g.gstin ?? ''} /></Field> : <div />}
-        {p === 'cashfree' ? <>
-          <Field label={`Client ID (${saved('clientId')})`}><input name="clientId" type="password" className="input" autoComplete="off" /></Field>
-          <Field label={`Client secret (${saved('clientSecret')})`}><input name="clientSecret" type="password" className="input" autoComplete="new-password" /></Field>
-          <p className="text-xs text-slate-500 md:pt-6">Cashfree dashboard → Secure ID → Developers → API keys. These are separate from the payment gateway keys. Add balance for GSTIN checks.</p>
-        </> : <>
-          <Field label={`Username (${saved('username')})`}><input name="username" type="password" className="input" autoComplete="off" /></Field>
-          <Field label={`Password (${saved('password')})`}><input name="password" type="password" className="input" autoComplete="new-password" /></Field>
-          <div />
-          <Field label={`Client ID, if given (${saved('clientId')})`}><input name="clientId" type="password" className="input" autoComplete="off" /></Field>
-          <Field label={`Client secret, if given (${saved('clientSecret')})`}><input name="clientSecret" type="password" className="input" autoComplete="off" /></Field>
-        </>}
-      </div>
-      {changed && <p className="mt-2 text-xs text-amber-700">Switching service clears the saved keys of the other one.</p>}
-      <div className="mt-4 flex flex-wrap items-end gap-2">
-        <button className="btn-primary">Save</button>
-        <input className="input w-56 uppercase" maxLength={15} placeholder="GSTIN to test" value={probe} onChange={(e) => setProbe(e.target.value.toUpperCase())} />
-        <button type="button" className="btn-ghost" disabled={changed} onClick={test}>Test lookup</button>
-      </div>
-      {ok && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{ok}</p>}
-      <ErrorText error={err} />
-    </form>
   );
 }

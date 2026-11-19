@@ -168,6 +168,23 @@ export default async function (app: FastifyInstance) {
   });
 
   // ───── Delivery challans (trips) ─────
+  /** One challan with everything its printed copy needs (plant letterhead and logo, customer, site, mix, truck). */
+  app.get('/challans/:id', { preHandler: requireRole('MANAGER', 'DISPATCH', 'ACCOUNTANT', 'SALES', 'BATCHING') }, async (req) => {
+    const c = await prisma.challan.findFirst({
+      where: { id: (req.params as { id: string }).id, tenantId: tid(req) },
+      include: {
+        order: { include: { customer: { select: { name: true, gstin: true, phone: true, billingAddress: true } }, site: true, mixDesign: { select: { grade: true, name: true } } } },
+        vehicle: { select: { number: true } }, driver: { select: { name: true, phone: true } },
+        batch: { select: { number: true, batchedAt: true, plant: { select: { name: true, address: true } } } },
+        ewayBills: { where: { status: 'ACTIVE' }, select: { ewbNo: true, validUpto: true } },
+        invoiceLine: { select: { invoice: { select: { number: true } } } },
+      },
+    });
+    if (!c) throw notFound('Challan not found');
+    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tid(req) }, select: { name: true, legalName: true, gstin: true, address: true, city: true, pincode: true, phone: true, email: true, logoUrl: true } });
+    return { ...c, tenant };
+  });
+
   app.get('/challans', { preHandler: requireRole('MANAGER', 'DISPATCH', 'ACCOUNTANT', 'SALES') }, async (req) => {
     const { status, uninvoiced, customerId } = req.query as { status?: string; uninvoiced?: string; customerId?: string };
     return prisma.challan.findMany({

@@ -75,10 +75,12 @@ export default async function (app: FastifyInstance) {
 
   // ───── Seller details needed on e-invoices ─────
   app.get('/company', { preHandler: requireRole('MANAGER', 'ACCOUNTANT') }, async (req) =>
-    prisma.tenant.findUniqueOrThrow({ where: { id: tid(req) }, select: { name: true, legalName: true, gstin: true, stateCode: true, address: true, city: true, pincode: true, phone: true, email: true } }));
+    prisma.tenant.findUniqueOrThrow({ where: { id: tid(req) }, select: { name: true, legalName: true, gstin: true, stateCode: true, address: true, city: true, pincode: true, phone: true, email: true, logoUrl: true } }));
 
-  app.put('/company', { preHandler: requireRole('OWNER') }, async (req) => {
+  app.put('/company', { preHandler: requireRole('OWNER'), bodyLimit: 2 * 1024 * 1024 }, async (req) => {
     const b = z.object({
+      /** plant logo shown on invoices, challans and notes: a PNG/JPEG/WebP/SVG data URL up to ~500 KB, or null to remove */
+      logoUrl: z.string().regex(/^data:image\/(png|jpeg|webp|svg\+xml);base64,/, 'Logo must be a PNG, JPG, WebP or SVG image').max(700_000, 'Logo must be under 500 KB').nullable().optional(),
       legalName: z.string().min(2).optional(), gstin: z.string().optional().nullable(), stateCode: z.string().length(2).optional(),
       address: z.string().optional().nullable(), city: z.string().optional().nullable(), pincode: z.string().optional().nullable(),
       phone: z.string().optional().nullable(), email: z.string().optional().nullable(),
@@ -87,7 +89,7 @@ export default async function (app: FastifyInstance) {
     if (b.pincode) { const e = pincodeError(b.pincode, 'Company'); if (e) throw bad(e); }
     if (b.stateCode) { const e = stateError(b.stateCode, 'Company'); if (e) throw bad(e); }
     await prisma.tenant.update({ where: { id: tid(req) }, data: b });
-    await audit(req, 'UPDATE', 'Tenant', tid(req), b);
+    await audit(req, 'UPDATE', 'Tenant', tid(req), { ...b, logoUrl: b.logoUrl === undefined ? undefined : b.logoUrl ? '(image)' : null });
     return { ok: true };
   });
 

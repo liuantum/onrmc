@@ -1,3 +1,4 @@
+import { BRAND_CREDIT } from '../components/PrintBits';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, session } from '../lib/api';
@@ -26,6 +27,7 @@ export default function Login() {
         <input id="password" name="password" type="password" className="input mb-6" autoComplete="current-password" required />
         <button className="btn-primary w-full justify-center py-2.5" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
+        <p className="mt-6 text-center text-[11px] text-slate-400">{BRAND_CREDIT}</p>
       </form>
     </div>
   );

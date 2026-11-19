@@ -14,6 +14,7 @@ import Dispatch from './pages/Dispatch';
 import Fleet from './pages/Fleet';
 import Invoices from './pages/Invoices';
 import InvoiceView from './pages/InvoiceView';
+import ChallanView from './pages/ChallanView';
 import Notes from './pages/Notes';
 import NoteView from './pages/NoteView';
 import Suppliers from './pages/Suppliers';
@@ -66,6 +67,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="qc" element={<Qc />} />
             <Route path="invoices" element={<Invoices />} />
             <Route path="invoices/:id" element={<InvoiceView />} />
+            <Route path="challans/:id" element={<ChallanView />} />
             <Route path="notes" element={<Notes />} />
             <Route path="notes/:id" element={<NoteView />} />
             <Route path="suppliers" element={<Suppliers />} />

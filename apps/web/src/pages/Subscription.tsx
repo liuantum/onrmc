@@ -5,6 +5,7 @@ import { Building2, Check, CreditCard, QrCode } from 'lucide-react';
 import { api, date, money } from '../lib/api';
 import { Badge, ErrorText, Field, Modal, PageHeader, Table, formData } from '../components/ui';
 import { UpiQr } from '../components/UpiQr';
+import { DocFooter } from '../components/PrintBits';
 
 declare global { interface Window { Razorpay?: any; Cashfree?: any } }
 
@@ -210,6 +211,7 @@ export function SubscriptionInvoiceView({ id }: { id: string }) {
           <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Total</span><span>{money(inv.total)}</span></div>
         </div>
         <div className="mt-6 text-xs text-slate-500">Paid via {inv.payment.method.toLowerCase()}{inv.payment.reference && ` · UTR ${inv.payment.reference}`}{inv.payment.gatewayPaymentId && ` · ${inv.payment.gatewayPaymentId}`}{inv.payment.paidOn && ` on ${date(inv.payment.paidOn)}`}</div>
+        <DocFooter />
       </div>
     </>
   );

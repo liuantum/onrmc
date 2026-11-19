@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { Printer } from 'lucide-react';
 import { api, date, dateTime, money, qty } from '../lib/api';
+import { DocFooter, DocLogo } from '../components/PrintBits';
 import { Badge, ErrorText, Modal, PageHeader, useSave } from '../components/ui';
 import { ImportResult, PortalIrnDialog, RecordEwbDialog, useEinvoiceProvider } from '../components/PortalEinvoice';
 import { NoteForm } from './Notes';
@@ -41,10 +42,13 @@ export default function InvoiceView() {
       <EinvoicePanel inv={inv} />
       <div className="card mx-auto max-w-4xl p-8 print:border-0 print:shadow-none">
         <div className="flex justify-between border-b border-slate-200 pb-4">
-          <div>
+          <div className="flex items-start gap-4">
+            <DocLogo src={inv.tenant.logoUrl} />
+            <div>
             <div className="text-xl font-bold">{inv.tenant.legalName ?? inv.tenant.name}</div>
             <div className="text-sm text-slate-600">{inv.tenant.address}</div>
             {inv.tenant.gstin && <div className="text-sm">GSTIN: <b>{inv.tenant.gstin}</b></div>}
+            </div>
           </div>
           <div className="flex gap-4 text-right">
             <div>
@@ -99,6 +103,7 @@ export default function InvoiceView() {
           </div>
         )}
         <div className="mt-12 flex justify-between text-sm text-slate-500"><span>Receiver's signature</span><span>For {inv.tenant.name}<br /><br />Authorised signatory</span></div>
+        <DocFooter />
       </div>
       {noteType && <NoteForm invoice={inv} type={noteType} onClose={() => setNoteType(null)} />}
       <Modal title="Cancel invoice" open={cancel} onClose={() => setCancel(false)}>

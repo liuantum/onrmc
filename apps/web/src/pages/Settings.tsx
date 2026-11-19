@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, money, qty, session } from '../lib/api';
 import { ErrorText, Field, PageHeader, Table, formData, useSave } from '../components/ui';
 import { Download } from 'lucide-react';
+import { fileToDataUrl } from './Subscription';
 import { downloadJson, ImportResult, IRP_PORTAL } from '../components/PortalEinvoice';
 
 const TABS = ['Staff', 'Trucks', 'Grades', 'Materials', 'Suppliers', 'Plants', 'E-invoicing'] as const;
@@ -132,7 +133,7 @@ function Plants() {
   );
 }
 
-const PROVIDERS = [['PORTAL', 'GST portal: upload JSON with your own GST login (no extra account)'], ['MASTERS_INDIA', 'Masters India GSP (automatic, needs their account)'], ['CLEARTAX', 'ClearTax GSP (automatic, needs their account)'], ['MOCK', 'Mock (practice only, fake IRNs)'], ['NIC_DIRECT', 'NIC direct API (not built)']] as const;
+const PROVIDERS = [['PORTAL', 'GST portal (free, your own GST login)'], ['MASTERS_INDIA', 'Masters India GSP (automatic, needs their account)'], ['CLEARTAX', 'ClearTax GSP (automatic, needs their account)'], ['MOCK', 'Mock (practice only, fake IRNs)'], ['NIC_DIRECT', 'NIC direct API (not built)']] as const;
 const MODE_LABEL: Record<string, string> = { offline: 'practice · fake IRNs', sandbox: 'sandbox / test', production: 'live', portal: 'live · GST portal' };
 
 function Einvoicing() {
@@ -143,6 +144,7 @@ function Einvoicing() {
   const { data: co } = useQuery({ queryKey: ['company'], queryFn: () => api('/company') });
   const [form, setForm] = useState<{ einvoiceEnabled: boolean; ewaybillEnabled: boolean; provider: string } | null>(null);
   const [creds, setCreds] = useState<Record<string, string>>({});
+  const [showPaid, setShowPaid] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { if (s && !form) setForm({ einvoiceEnabled: s.einvoiceEnabled, ewaybillEnabled: s.ewaybillEnabled, provider: s.provider }); }, [s, form]);
@@ -172,7 +174,8 @@ function Einvoicing() {
         <fieldset disabled={!canEdit} className="space-y-3">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.einvoiceEnabled} onChange={(e) => setForm({ ...form, einvoiceEnabled: e.target.checked })} />Generate e-invoices (IRN)</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.ewaybillEnabled} onChange={(e) => setForm({ ...form, ewaybillEnabled: e.target.checked })} />Generate e-way bills</label>
-          <Field label="Provider (GSP)"><select className="input" value={form.provider} onChange={(e) => { setForm({ ...form, provider: e.target.value }); setCreds({}); }}>{PROVIDERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+          <Field label="How IRNs are made"><select className="input" value={form.provider} onChange={(e) => { setForm({ ...form, provider: e.target.value }); setCreds({}); }}>{PROVIDERS.filter(([k]) => showPaid || k === 'PORTAL' || k === 'MOCK' || k === s.provider).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+          {!showPaid && <button type="button" className="text-xs text-slate-400 hover:text-brand-600" onClick={() => setShowPaid(true)}>Other options</button>}
           {fields.length > 0 && <div className="space-y-3 rounded-lg bg-slate-50 p-3">
             <p className="text-xs text-slate-500">Credentials are encrypted on the server and never shown again. Leave a field blank to keep the saved value.{providerChanged && ' Changing provider clears saved credentials.'}</p>
             {!s.encryptionReady && <p className="text-xs text-red-600">The server has no EINVOICE_ENC_KEY set, so credentials cannot be saved.</p>}
@@ -204,7 +207,7 @@ function Einvoicing() {
         {!canEdit && <p className="mt-2 text-xs text-slate-400">Only the owner or a manager can change these settings.</p>}
       </div>
       <form className="card p-5" onSubmit={(e) => saveCo.mutate(formData(e))}>
-        <h3 className="mb-1 font-semibold">Company details on e-invoices</h3>
+        <h3 className="mb-1 font-semibold">Company details and logo</h3>
         <p className="mb-4 text-sm text-slate-500">The portal checks these against your GST registration.</p>
         <fieldset disabled={role !== 'OWNER'} className="grid grid-cols-2 gap-3">
           <Field label="Legal name" className="col-span-2"><input name="legalName" className="input" defaultValue={co.legalName ?? co.name} /></Field>
@@ -215,6 +218,22 @@ function Einvoicing() {
           <Field label="PIN code"><input name="pincode" className="input" maxLength={6} defaultValue={co.pincode ?? ''} /></Field>
           <Field label="Phone"><input name="phone" className="input" defaultValue={co.phone ?? ''} /></Field>
           <Field label="Email"><input name="email" className="input" defaultValue={co.email ?? ''} /></Field>
+          <div className="col-span-2 flex items-center gap-4 rounded-lg bg-slate-50 p-3">
+            {co.logoUrl ? <img src={co.logoUrl} alt="Plant logo" className="h-14 w-auto max-w-[140px] object-contain" /> : <div className="flex h-14 w-24 items-center justify-center rounded border border-dashed border-slate-300 text-xs text-slate-400">No logo</div>}
+            <div className="text-sm">
+              <div className="font-medium">Plant logo</div>
+              <div className="text-xs text-slate-500">Printed on invoices, challans and credit/debit notes. PNG or JPG, under 500 KB.</div>
+              <div className="mt-1 flex gap-2">
+                <label className="btn-ghost cursor-pointer border border-slate-200 text-xs">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={async (e) => {
+                  const f = e.target.files?.[0]; e.target.value = '';
+                  if (!f) return;
+                  if (f.size > 500_000) { setMsg(null); setError('Logo must be under 500 KB'); return; }
+                  saveCo.mutate({ logoUrl: await fileToDataUrl(f) });
+                }} /></label>
+                {co.logoUrl && <button type="button" className="btn-ghost text-xs" onClick={() => saveCo.mutate({ logoUrl: null })}>Remove</button>}
+              </div>
+            </div>
+          </div>
           <div className="col-span-2"><button className="btn-primary" disabled={saveCo.isPending}>Save company details</button></div>
         </fieldset>
         {role !== 'OWNER' && <p className="mt-2 text-xs text-slate-400">Only the owner can change company details.</p>}

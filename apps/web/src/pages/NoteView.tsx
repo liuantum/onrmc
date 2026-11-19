@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Printer } from 'lucide-react';
 import { api, date, dateTime, money, qty } from '../lib/api';
+import { DocFooter, DocLogo } from '../components/PrintBits';
 import { Badge, ErrorText, Modal, PageHeader } from '../components/ui';
 import { IRN_REASONS, Preview, QrImage, ReasonDialog, useAction } from './InvoiceView';
 import { REASONS } from './Notes';
@@ -40,10 +41,13 @@ export default function NoteView() {
       )}
       <div className="card mx-auto max-w-4xl p-8 print:border-0 print:shadow-none">
         <div className="flex justify-between border-b border-slate-200 pb-4">
-          <div>
+          <div className="flex items-start gap-4">
+            <DocLogo src={n.tenant.logoUrl} />
+            <div>
             <div className="text-xl font-bold">{n.tenant.legalName ?? n.tenant.name}</div>
             <div className="text-sm text-slate-600">{n.tenant.address}</div>
             {n.tenant.gstin && <div className="text-sm">GSTIN: <b>{n.tenant.gstin}</b></div>}
+            </div>
           </div>
           <div className="flex gap-4 text-right">
             <div>
@@ -82,6 +86,7 @@ export default function NoteView() {
         </div>
         {n.status === 'CANCELLED' && <div className="mt-4 rounded bg-red-50 p-3 text-sm text-red-700">Cancelled: {n.cancelReason}</div>}
         <div className="mt-12 flex justify-between text-sm text-slate-500"><span>Receiver's signature</span><span>For {n.tenant.name}<br /><br />Authorised signatory</span></div>
+        <DocFooter />
       </div>
 
       <Modal title="Generate IRN" open={dlg === 'irn'} onClose={close}>
