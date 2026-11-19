@@ -6,6 +6,9 @@ import { decryptJson } from '../lib/einvoice/crypto.js';
 import { MastersIndiaAdapter } from '../lib/einvoice/adapters/mastersindia.js';
 import { envOf } from '../lib/einvoice/adapters/http.js';
 import { platformSettings } from '../lib/subscription.js';
+import { portalCaptcha, portalSearch } from '../lib/gst-portal.js';
+import { z } from 'zod';
+import { bad } from '../lib/errors.js';
 
 /** 4th PAN character → kind of taxpayer. */
 const PAN_KIND: Record<string, string> = {
@@ -79,15 +82,36 @@ export async function lookupGstin(tenantId: string, raw: string) {
       cache.set(gstin, { at: Date.now(), d: details });
       source = details ? 'gst' : null;
       if (!details) note = 'The GST system has no record of this GSTIN. Check it with the customer.';
-    } else if (!note) note = 'Name and address lookups are not switched on yet. State and PAN are filled from the GSTIN.';
+    }
   }
   const saved = cust ? { name: cust.name, address: cust.billingAddress, city: cust.city, pincode: cust.pincode, phone: cust.phone, email: cust.email }
     : supp ? { name: supp.name, address: supp.address, city: supp.city, pincode: supp.pincode, phone: supp.phone, email: supp.email } : null;
   if (!details && saved) { source = 'saved'; note = null; }
-  return { ...base, details, saved, source, existing, note };
+  // nothing automatic answered: offer the free GST-portal search (captcha typed by the person)
+  const portal = !details && !hit;
+  return { ...base, details, saved, source, existing, note, portal };
 }
 
 export default async function (app: FastifyInstance) {
   app.get('/gstin/:gstin', { preHandler: requireRole('MANAGER', 'ACCOUNTANT', 'SALES', 'DISPATCH', 'STORE') }, async (req) =>
     lookupGstin(tid(req), (req.params as { gstin: string }).gstin));
+
+  // Free lookup on the GST portal's public search: captcha image, then the person's answer.
+  const who = { preHandler: requireRole('MANAGER', 'ACCOUNTANT', 'SALES', 'DISPATCH', 'STORE') };
+  app.get('/gstin-portal/captcha', who, async () => {
+    try { return await portalCaptcha(); } catch (e) { throw bad((e as Error).message); }
+  });
+  app.post('/gstin/:gstin/portal', who, async (req) => {
+    const gstin = (req.params as { gstin: string }).gstin.trim().toUpperCase();
+    const e = gstinError(gstin, ''); if (e) throw bad(e.trim());
+    const b = z.object({ token: z.string().min(10), captcha: z.string().trim().min(4).max(10) }).parse(req.body);
+    try {
+      const d = await portalSearch(gstin, b.token, b.captcha);
+      cache.set(gstin, { at: Date.now(), d });
+      return { details: d, note: d ? null : 'The GST portal has no taxpayer with this GSTIN. Check it with the customer.' };
+    } catch (x) {
+      const g = x as GspError;
+      throw Object.assign(new Error(g.message), { statusCode: 400, code: g.code === 'CAPTCHA' ? 'CAPTCHA' : undefined });
+    }
+  });
 }

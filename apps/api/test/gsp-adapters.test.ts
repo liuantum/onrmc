@@ -115,3 +115,19 @@ test('portal result: IRN rows found in nested / signed-QR shaped JSON', async ()
   assert.equal(parsePortalResult([{ 'Ack No': '1', 'IRN': irn, 'Doc No': 'X1' }, { foo: 1 }])[0].docNo, 'X1');
   assert.equal(parsePortalResult({ Irn: 'short', AckNo: 1 }).length, 0);
 });
+
+test('GST portal search answer → name, address, PIN, state code, status', async () => {
+  const { parsePortalTaxpayer } = await import('../src/lib/gst-portal.js');
+  const d = parsePortalTaxpayer({
+    gstin: '36AAACS1234K1ZI', lgnm: 'SRI CONSTRUCTIONS PRIVATE LIMITED', tradeNam: 'SRI CONSTRUCTIONS', sts: 'Active', dty: 'Regular', ctb: 'Private Limited Company',
+    pradr: { addr: { bno: '4-1', flno: '4th Floor', bnm: 'Cyber Towers', st: 'Madhapur', loc: 'Hyderabad', dst: 'Hyderabad', stcd: 'Telangana', pncd: '500081', lt: '', lg: '' }, ntr: 'Supplier of Services' },
+  }, '36AAACS1234K1ZI')!;
+  assert.equal(d.legalName, 'SRI CONSTRUCTIONS PRIVATE LIMITED');
+  assert.equal(d.address, '4-1, 4th Floor, Cyber Towers, Madhapur');
+  assert.equal(d.city, 'Hyderabad');
+  assert.equal(d.pincode, '500081');
+  assert.equal(d.stateCode, '36');
+  assert.equal(d.status, 'ACT');
+  assert.equal(parsePortalTaxpayer({ sts: 'Cancelled', lgnm: 'X', pradr: { adr: 'Plot 9, Bengaluru, Karnataka, 560001' } }, '29AAACS1234K1ZE')!.pincode, '560001');
+  assert.equal(parsePortalTaxpayer({ errorCode: 'FO8000' }, '29AAACS1234K1ZE'), null);
+});

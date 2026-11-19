@@ -114,7 +114,10 @@ Code: `apps/api/src/lib/einvoice/` (payload, validation, adapters) and `apps/api
   - `POST /ewaybill/:id/extend`
   - Portal mode: `GET /einvoice/portal-json`, `POST /einvoice/portal-import`, `POST /invoices/:id/einvoice/record`,
     `POST /invoices/:id/ewaybill/record`
-  - `GET /gstin/:gstin`: check digit, state, PAN and entity type from the GSTIN itself; saved details if a customer or
+  - `GET /gstin/:gstin`, `GET /gstin-portal/captcha`, `POST /gstin/:gstin/portal`: free lookup through the GST
+    portal's public taxpayer search (`lib/gst-portal.ts`): the user types the portal's captcha in the form, and the
+    legal name, address, PIN and status fill in. Not a published API, so a portal change fails cleanly. Also:
+    check digit, state, PAN and entity type from the GSTIN itself; saved details if a customer or
     supplier already has it; legal name, address, PIN and GST status from the GST system through the connected GSP
     (Masters India `get-gstin-details`). Used by the customer, supplier, order and invoice forms to fill details.
   - `GET|PUT /einvoice/settings`

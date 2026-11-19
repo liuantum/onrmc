@@ -183,8 +183,8 @@ function AdminGstinLookup() {
   }
   return (
     <form onSubmit={save} className="card mt-6 p-5">
-      <div className="mb-1"><Toggle name="enabled" defaultChecked={g.enabled} label="GSTIN autofill for all plants (Masters India)"
-        hint="When a plant types a customer's GSTIN, the legal name, address, PIN and GST status are filled from the GST system through your Masters India account. Plants need no account of their own." /></div>
+      <div className="mb-1"><Toggle name="enabled" defaultChecked={g.enabled} label="Optional: automatic GSTIN lookup without captcha (Masters India)"
+        hint="Not needed: plants already fetch name and address free from the GST portal by typing a captcha. Add a Masters India account only if you want it to fill without the captcha." /></div>
       {!g.encryptionReady && <p className="my-2 text-xs text-red-600">EINVOICE_ENC_KEY is not set on the server, so these credentials can't be stored.</p>}
       <div className="mt-4 grid gap-4 md:grid-cols-3">
         <Field label="GSTIN the account is registered to"><input name="gstin" className="input uppercase" maxLength={15} defaultValue={g.gstin ?? ''} /></Field>
