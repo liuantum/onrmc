@@ -146,36 +146,38 @@ export default async function (app: FastifyInstance) {
     const ps = await platformSettings();
     let creds: Record<string, string> = {};
     try { creds = ps.gstinLookupEnc ? decryptJson<Record<string, string>>(ps.gstinLookupEnc) : {}; } catch { creds = {}; }
-    return { enabled: ps.gstinLookupEnabled, gstin: ps.gstinLookupGstin, environment: creds.environment ?? 'production', savedKeys: Object.keys(creds).filter((k) => k !== 'environment'), encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16 };
+    return { enabled: ps.gstinLookupEnabled, gstin: ps.gstinLookupGstin, provider: creds.provider ?? (creds.username ? 'mastersindia' : 'cashfree'), environment: creds.environment ?? 'production', savedKeys: Object.keys(creds).filter((k) => k !== 'environment' && k !== 'provider'), encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16 };
   };
   app.get('/gstin-lookup', lookupView);
   app.put('/gstin-lookup', async (req) => {
     const b = z.object({
       enabled: z.boolean(), gstin: z.string().trim().toUpperCase().nullish().transform((v) => v || null),
-      environment: z.enum(['production', 'sandbox']).default('production'),
+      provider: z.enum(['cashfree', 'mastersindia']).default('cashfree'), environment: z.enum(['production', 'sandbox']).default('production'),
       username: z.string().optional(), password: z.string().optional(), clientId: z.string().optional(), clientSecret: z.string().optional(),
     }).parse(req.body);
     if (b.gstin) { const e = gstinError(b.gstin, 'Account'); if (e) throw bad(e); }
     const ps = await platformSettings();
-    const prev = ps.gstinLookupEnc ? decryptJson<Record<string, string>>(ps.gstinLookupEnc) : {};
-    const next: Record<string, string> = { ...prev, environment: b.environment };
+    let prev = ps.gstinLookupEnc ? decryptJson<Record<string, string>>(ps.gstinLookupEnc) : {};
+    if ((prev.provider ?? (prev.username ? 'mastersindia' : 'cashfree')) !== b.provider) prev = {}; // keys belong to one provider
+    const next: Record<string, string> = { ...prev, provider: b.provider, environment: b.environment };
     for (const k of ['username', 'password', 'clientId', 'clientSecret'] as const) if (b[k]?.trim()) next[k] = b[k]!.trim();
-    if (b.enabled && (!b.gstin || !next.username || !next.password)) throw bad('Add the GSTIN, username and password of the Masters India account before switching lookups on');
+    if (b.enabled && b.provider === 'cashfree' && (!next.clientId || !next.clientSecret)) throw bad('Add the Cashfree client ID and client secret before switching lookups on');
+    if (b.enabled && b.provider === 'mastersindia' && (!b.gstin || !next.username || !next.password)) throw bad('Add the GSTIN, username and password of the Masters India account before switching lookups on');
     let gstinLookupEnc: string;
     try { gstinLookupEnc = encryptJson(next); } catch (e) { throw bad((e as Error).message); }
     await prisma.platformSettings.update({ where: { id: 'platform' }, data: { gstinLookupEnabled: b.enabled, gstinLookupGstin: b.gstin, gstinLookupEnc } });
     clearGstinCache();
-    await audit(req, 'GSTIN_LOOKUP_SETTINGS', 'PlatformSettings', 'platform', { enabled: b.enabled, gstin: b.gstin, environment: b.environment, keysChanged: ['username', 'password', 'clientId', 'clientSecret'].filter((k) => b[k as 'username']?.trim()) });
+    await audit(req, 'GSTIN_LOOKUP_SETTINGS', 'PlatformSettings', 'platform', { enabled: b.enabled, provider: b.provider, gstin: b.gstin, environment: b.environment, keysChanged: ['username', 'password', 'clientId', 'clientSecret'].filter((k) => b[k as 'username']?.trim()) });
     return lookupView();
   });
   app.post('/gstin-lookup/test', async (req) => {
     const { gstin } = z.object({ gstin: z.string().trim().toUpperCase().optional() }).parse(req.body ?? {});
     const ps = await platformSettings();
-    const g = gstin || ps.gstinLookupGstin;
+    const g = gstin || ps.gstinLookupGstin || ps.sellerGstin;
     if (!g) throw bad('Enter a GSTIN to look up');
     try {
       const d = await platformGstinDetails(g, true);
-      return d ? { ok: true, message: `Found: ${d.legalName}${d.address ? `, ${d.address}` : ''}${d.pincode ? ` ${d.pincode}` : ''} (status ${d.status ?? '?'})`, details: d } : { ok: false, message: 'Masters India answered, but has no record of that GSTIN' };
+      return d ? { ok: true, message: `Found: ${d.legalName}${d.address ? `, ${d.address}` : ''}${d.pincode ? ` ${d.pincode}` : ''} (status ${d.status ?? '?'})`, details: d } : { ok: false, message: 'The lookup service answered, but has no record of that GSTIN' };
     } catch (e) { return { ok: false, message: (e as Error).message }; }
   });
 

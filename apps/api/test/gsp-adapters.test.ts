@@ -131,3 +131,21 @@ test('GST portal search answer → name, address, PIN, state code, status', asyn
   assert.equal(parsePortalTaxpayer({ sts: 'Cancelled', lgnm: 'X', pradr: { adr: 'Plot 9, Bengaluru, Karnataka, 560001' } }, '29AAACS1234K1ZE')!.pincode, '560001');
   assert.equal(parsePortalTaxpayer({ errorCode: 'FO8000' }, '29AAACS1234K1ZE'), null);
 });
+
+test('Cashfree Verify GSTIN: URL, key headers, answer mapped; unknown GSTIN is null; empty balance explained', async () => {
+  const { cashfreeGstin } = await import('../src/lib/cashfree-gstin.js');
+  const calls = fakeFetch((c) => {
+    if (c.body.GSTIN === '29AAICP2912R1ZR') return { body: { reference_id: 19, GSTIN: '29AAICP2912R1ZR', legal_name_of_business: 'UJJIVAN SMALL FINANCE BANK LIMITED', trade_name_of_business: 'UJJIVAN SMALL FINANCE BANK', gst_in_status: 'Active', taxpayer_type: 'Regular', principal_place_address: 'Grape Garden, 18th Main, Koramangala, Bengaluru, Karnataka, 560095', principal_place_split_address: { building_name: 'Grape Garden', street: '18th Main', location: 'Koramangala', building_number: 'No 27', district: 'Bengaluru Urban', state: 'Karnataka', city: 'Bengaluru', flat_number: '', pincode: '560095' }, valid: true, message: 'GSTIN Exists' } };
+    if (c.body.GSTIN === '22ABCDE1234F1Z5') return { body: { reference_id: 20, GSTIN: '22ABCDE1234F1Z5', message: "GSTIN Doesn't Exist" } };
+    return { status: 422, body: { type: 'validation_error', code: 'insufficient_balance', message: 'low' } };
+  });
+  const d = await cashfreeGstin({ clientId: 'cid', clientSecret: 'sec' }, 'production', '29AAICP2912R1ZR');
+  assert.equal(calls[0].url, 'https://api.cashfree.com/verification/gstin');
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].headers['x-client-id'], 'cid');
+  assert.equal(calls[0].headers['x-client-secret'], 'sec');
+  assert.deepEqual(d, { gstin: '29AAICP2912R1ZR', legalName: 'UJJIVAN SMALL FINANCE BANK LIMITED', tradeName: 'UJJIVAN SMALL FINANCE BANK', address: 'No 27, Grape Garden, 18th Main, Koramangala', city: 'Bengaluru', stateCode: '29', pincode: '560095', status: 'ACT', taxpayerType: 'Regular', blocked: false });
+  assert.equal(await cashfreeGstin({ clientId: 'cid', clientSecret: 'sec' }, 'sandbox', '22ABCDE1234F1Z5'), null);
+  assert.equal(calls[1].url, 'https://sandbox.cashfree.com/verification/gstin');
+  await assert.rejects(cashfreeGstin({ clientId: 'cid', clientSecret: 'sec' }, 'production', '36AABCU9603R1ZO'), (e: GspError) => /balance/.test(e.message));
+});

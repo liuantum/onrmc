@@ -7,6 +7,7 @@ import { MastersIndiaAdapter } from '../lib/einvoice/adapters/mastersindia.js';
 import { envOf } from '../lib/einvoice/adapters/http.js';
 import { platformSettings } from '../lib/subscription.js';
 import { portalCaptcha, portalSearch } from '../lib/gst-portal.js';
+import { cashfreeGstin } from '../lib/cashfree-gstin.js';
 import { z } from 'zod';
 import { bad } from '../lib/errors.js';
 
@@ -26,12 +27,16 @@ export const clearGstinCache = () => cache.clear();
  */
 export async function platformGstinDetails(gstin: string, ignoreSwitch = false): Promise<GstinDetails | null | undefined> {
   const ps = await platformSettings();
-  if ((!ps.gstinLookupEnabled && !ignoreSwitch) || !ps.gstinLookupEnc || !ps.gstinLookupGstin) {
-    if (ignoreSwitch) throw new GspError('Save the Masters India GSTIN, username and password first', 'NO_CREDENTIALS');
+  if ((!ps.gstinLookupEnabled && !ignoreSwitch) || !ps.gstinLookupEnc) {
+    if (ignoreSwitch) throw new GspError('Save the lookup keys first', 'NO_CREDENTIALS');
     return undefined;
   }
   const c = decryptJson<Record<string, string>>(ps.gstinLookupEnc);
-  if (!c.username || !c.password) throw new GspError('Masters India username or password is missing', 'NO_CREDENTIALS');
+  if ((c.provider ?? (c.username ? 'mastersindia' : 'cashfree')) === 'cashfree') {
+    if (!c.clientId || !c.clientSecret) throw new GspError('Cashfree client ID or secret is missing', 'NO_CREDENTIALS');
+    return cashfreeGstin({ clientId: c.clientId, clientSecret: c.clientSecret }, envOf(c), gstin);
+  }
+  if (!c.username || !c.password || !ps.gstinLookupGstin) throw new GspError('Masters India GSTIN, username or password is missing', 'NO_CREDENTIALS');
   return new MastersIndiaAdapter({ username: c.username, password: c.password, clientId: c.clientId, clientSecret: c.clientSecret }, ps.gstinLookupGstin, envOf(c)).gstinDetails(gstin);
 }
 
