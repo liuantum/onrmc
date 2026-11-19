@@ -15,6 +15,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: apps/android
@@ -56,3 +58,20 @@ jobs:
           path: |
             apps/android/*/build/outputs/apk/release/*.apk
             apps/android/*/build/outputs/bundle/release/*.aab
+
+      # A fixed download page for phones: https://github.com/<owner>/<repo>/releases/tag/android-latest
+      - name: Publish APKs to the "android-latest" release
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          cp driver/build/outputs/apk/debug/*.apk out/onrmc-driver.apk
+          cp owner/build/outputs/apk/debug/*.apk out/onrmc-owner.apk
+          notes="Debug build of ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}, $(date -u +'%d %b %Y %H:%M UTC').
+          onrmc-driver.apk: for truck drivers (trips, GPS, delivery proof).
+          onrmc-owner.apk: for the plant owner (dashboard, alerts, live map).
+          On the phone: download, allow installing from this source, install. On the sign-in screen enter the server address, e.g. 192.168.1.20 for a computer on the same Wi-Fi running the API, or your domain."
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --prerelease --title "onrmc Android apps (latest)" --notes "$notes"
+          gh release edit android-latest --notes "$notes"
+          gh release upload android-latest out/onrmc-driver.apk out/onrmc-owner.apk --clobber
