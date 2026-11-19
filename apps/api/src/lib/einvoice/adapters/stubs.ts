@@ -9,9 +9,10 @@ import { GspError, type GspAdapter } from './types.js';
  *   AES session key exchange with NIC's public key). Usually only for large taxpayers — prefer a GSP.
  */
 export interface CredentialField { key: string; label: string; optional?: boolean; options?: string[] }
-const ENV: CredentialField = { key: 'environment', label: 'Environment', optional: true, options: ['sandbox', 'production'] };
+const ENV: CredentialField = { key: 'environment', label: 'Environment', optional: true, options: ['production', 'sandbox'] };
 export const CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
   MOCK: [],
+  PORTAL: [],
   CLEARTAX: [ENV, { key: 'authToken', label: 'Auth token' }, { key: 'ownerId', label: 'Owner ID', optional: true }],
   MASTERS_INDIA: [ENV, { key: 'username', label: 'Username' }, { key: 'password', label: 'Password' }, { key: 'clientId', label: 'Client ID', optional: true }, { key: 'clientSecret', label: 'Client secret', optional: true }],
   NIC_DIRECT: [{ key: 'clientId', label: 'Client ID' }, { key: 'clientSecret', label: 'Client secret' }, { key: 'username', label: 'API username' }, { key: 'password', label: 'API password' }],

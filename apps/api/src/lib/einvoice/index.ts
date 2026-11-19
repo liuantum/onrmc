@@ -2,6 +2,7 @@ import type { GspProvider } from '@prisma/client';
 import { prisma, type Tx } from '../prisma.js';
 import { decryptJson } from './crypto.js';
 import { MockAdapter } from './adapters/mock.js';
+import { PortalAdapter } from './adapters/portal.js';
 import { missingCredentials, NotImplementedAdapter } from './adapters/stubs.js';
 import { ClearTaxAdapter } from './adapters/cleartax.js';
 import { MastersIndiaAdapter } from './adapters/mastersindia.js';
@@ -11,6 +12,7 @@ import type { GspAdapter } from './adapters/types.js';
 
 export * from './payload.js';
 export * from './validate.js';
+export * from './portal-import.js';
 export * from './adapters/types.js';
 export { CREDENTIAL_FIELDS } from './adapters/stubs.js';
 export { encryptJson } from './crypto.js';
@@ -21,6 +23,7 @@ export async function getSettings(tenantId: string, tx: Tx = prisma) {
 
 export function adapterFor(provider: GspProvider, credentialsEnc: string | null, gstin?: string | null): GspAdapter {
   if (provider === 'MOCK') return new MockAdapter();
+  if (provider === 'PORTAL') return new PortalAdapter();
   const creds = credentialsEnc ? decryptJson<Record<string, string>>(credentialsEnc) : null;
   if (provider === 'CLEARTAX' || provider === 'MASTERS_INDIA') {
     missingCredentials(provider, creds);
@@ -32,10 +35,11 @@ export function adapterFor(provider: GspProvider, credentialsEnc: string | null,
   return new NotImplementedAdapter(provider, creds);
 }
 
-/** sandbox / production / offline, for the UI. */
+/** production / sandbox / portal / offline, for the UI. */
 export function providerMode(provider: GspProvider, credentialsEnc: string | null) {
   if (provider === 'MOCK') return 'offline';
-  try { return envOf(credentialsEnc ? decryptJson<Record<string, string>>(credentialsEnc) : null); } catch { return 'sandbox'; }
+  if (provider === 'PORTAL') return 'portal';
+  try { return envOf(credentialsEnc ? decryptJson<Record<string, string>>(credentialsEnc) : null); } catch { return 'production'; }
 }
 
 export async function getAdapter(tenantId: string, need: 'einvoice' | 'ewaybill') {

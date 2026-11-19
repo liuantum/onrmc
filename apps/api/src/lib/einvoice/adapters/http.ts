@@ -6,7 +6,7 @@ export async function gspFetch(url: string, init: { method: string; headers: Rec
   try {
     r = await fetch(url, { method: init.method, headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...init.headers }, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
-    throw new GspError(`Could not reach the provider (${(e as Error).name === 'TimeoutError' ? 'timed out' : (e as Error).message}). Try again; if an IRN was created it will be fetched on retry.`, 'NETWORK');
+    throw new GspError(`Could not reach the provider (${(e as Error).name === 'TimeoutError' ? 'timed out' : (e as Error).message}). Try again.`, 'NETWORK');
   }
   const text = await r.text();
   let json: any = null;
@@ -33,4 +33,5 @@ export function portalDate(s: string | null | undefined): Date | null {
 export const todayIst = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
 
 export type GspEnv = 'sandbox' | 'production';
-export const envOf = (creds: Record<string, string> | null): GspEnv => (creds?.environment === 'production' ? 'production' : 'sandbox');
+/** Live (production) unless the credentials say sandbox. */
+export const envOf = (creds: Record<string, string> | null): GspEnv => (creds?.environment === 'sandbox' ? 'sandbox' : 'production');

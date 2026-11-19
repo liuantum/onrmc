@@ -5,7 +5,7 @@ import { requireRole, tid } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { bad, HttpError, notFound } from '../lib/errors.js';
 import {
-  adapterFor, providerMode, buildIrpPayload, CREDENTIAL_FIELDS, EinvoiceValidationError, encryptJson, estimateRoadKm, getAdapter, getSettings,
+  adapterFor, providerMode, buildIrpPayload, buildIrpPayloadFromDoc, noteDoc, noteForIrp, parsePortalResult, CREDENTIAL_FIELDS, EinvoiceValidationError, encryptJson, estimateRoadKm, getAdapter, getSettings,
   GspError, invoiceForIrp, irpDate, normaliseVehicleNo, notRequiredReason, pincodeError, stateError, gstinError, vehicleNoError,
 } from '../lib/einvoice/index.js';
 import { decryptJson } from '../lib/einvoice/crypto.js';
@@ -17,7 +17,7 @@ const reasonCode = z.enum(['1', '2', '3', '4']);
 /** Turns provider / validation failures into clean 4xx/5xx responses. */
 function asHttp(e: unknown): Error {
   if (e instanceof EinvoiceValidationError) return new HttpError(422, `Cannot send to the portal: ${e.problems.join('; ')}`);
-  if (e instanceof GspError) return new HttpError(e.code === 'NO_CREDENTIALS' || e.code === 'NOT_IMPLEMENTED' || e.code === 'AUTH' ? 400 : 502, `Portal error${e.code ? ` ${e.code}` : ''}: ${e.message}`);
+  if (e instanceof GspError) return new HttpError(e.code === 'NO_CREDENTIALS' || e.code === 'NOT_IMPLEMENTED' || e.code === 'AUTH' || e.code === 'PORTAL' ? 400 : 502, `Portal error${e.code ? ` ${e.code}` : ''}: ${e.message}`);
   return e as Error;
 }
 
@@ -33,7 +33,7 @@ export default async function (app: FastifyInstance) {
   // ───── Settings (credentials are write-only) ─────
   app.get('/einvoice/settings', { preHandler: requireRole('MANAGER', 'ACCOUNTANT') }, async (req) => {
     const s = await getSettings(tid(req));
-    const provider = s?.provider ?? 'MOCK';
+    const provider = s?.provider ?? 'PORTAL';
     let savedKeys: string[] = [];
     if (s?.credentialsEnc) { try { savedKeys = Object.keys(decryptJson(s.credentialsEnc)); } catch { savedKeys = []; } }
     return {
@@ -44,7 +44,7 @@ export default async function (app: FastifyInstance) {
 
   app.put('/einvoice/settings', { preHandler: requireRole('MANAGER') }, async (req) => {
     const b = z.object({
-      einvoiceEnabled: z.boolean(), ewaybillEnabled: z.boolean(), provider: z.enum(['MOCK', 'CLEARTAX', 'MASTERS_INDIA', 'NIC_DIRECT']),
+      einvoiceEnabled: z.boolean(), ewaybillEnabled: z.boolean(), provider: z.enum(['PORTAL', 'MOCK', 'CLEARTAX', 'MASTERS_INDIA', 'NIC_DIRECT']),
       /** Only non-empty values are saved; omitted keys keep their stored value. */
       credentials: z.record(z.string(), z.string()).optional(),
     }).parse(req.body);
@@ -70,15 +70,17 @@ export default async function (app: FastifyInstance) {
   app.post('/einvoice/test', { preHandler: requireRole('MANAGER') }, async (req) => {
     const s = await getSettings(tid(req));
     const t = await prisma.tenant.findUnique({ where: { id: tid(req) }, select: { gstin: true } });
-    try { return await adapterFor(s?.provider ?? 'MOCK', s?.credentialsEnc ?? null, t?.gstin).testConnection(); } catch (e) { throw asHttp(e); }
+    try { return await adapterFor(s?.provider ?? 'PORTAL', s?.credentialsEnc ?? null, t?.gstin).testConnection(); } catch (e) { throw asHttp(e); }
   });
 
   // ───── Seller details needed on e-invoices ─────
   app.get('/company', { preHandler: requireRole('MANAGER', 'ACCOUNTANT') }, async (req) =>
-    prisma.tenant.findUniqueOrThrow({ where: { id: tid(req) }, select: { name: true, legalName: true, gstin: true, stateCode: true, address: true, city: true, pincode: true, phone: true, email: true } }));
+    prisma.tenant.findUniqueOrThrow({ where: { id: tid(req) }, select: { name: true, legalName: true, gstin: true, stateCode: true, address: true, city: true, pincode: true, phone: true, email: true, logoUrl: true } }));
 
-  app.put('/company', { preHandler: requireRole('OWNER') }, async (req) => {
+  app.put('/company', { preHandler: requireRole('OWNER'), bodyLimit: 2 * 1024 * 1024 }, async (req) => {
     const b = z.object({
+      /** plant logo shown on invoices, challans and notes: a PNG/JPEG/WebP/SVG data URL up to ~500 KB, or null to remove */
+      logoUrl: z.string().regex(/^data:image\/(png|jpeg|webp|svg\+xml);base64,/, 'Logo must be a PNG, JPG, WebP or SVG image').max(700_000, 'Logo must be under 500 KB').nullable().optional(),
       legalName: z.string().min(2).optional(), gstin: z.string().optional().nullable(), stateCode: z.string().length(2).optional(),
       address: z.string().optional().nullable(), city: z.string().optional().nullable(), pincode: z.string().optional().nullable(),
       phone: z.string().optional().nullable(), email: z.string().optional().nullable(),
@@ -87,7 +89,7 @@ export default async function (app: FastifyInstance) {
     if (b.pincode) { const e = pincodeError(b.pincode, 'Company'); if (e) throw bad(e); }
     if (b.stateCode) { const e = stateError(b.stateCode, 'Company'); if (e) throw bad(e); }
     await prisma.tenant.update({ where: { id: tid(req) }, data: b });
-    await audit(req, 'UPDATE', 'Tenant', tid(req), b);
+    await audit(req, 'UPDATE', 'Tenant', tid(req), { ...b, logoUrl: b.logoUrl === undefined ? undefined : b.logoUrl ? '(image)' : null });
     return { ok: true };
   });
 
@@ -141,6 +143,75 @@ export default async function (app: FastifyInstance) {
       await audit(req, 'EINVOICE_CANCEL', 'Invoice', inv.id, { irn: inv.irn, reasonCode: b.reasonCode, remark: b.remark });
       return { ok: true };
     } catch (e) { throw asHttp(e); }
+  });
+
+  // ───── GST portal mode (no GSP): download JSON → upload on einvoice1.gst.gov.in → import the result ─────
+  /** Every invoice / note still waiting for an IRN, as one JSON array for the portal's bulk upload. */
+  app.get('/einvoice/portal-json', billing, async (req) => {
+    const t = tid(req);
+    const [invs, notes] = await Promise.all([
+      prisma.invoice.findMany({ where: { tenantId: t, status: { not: 'CANCELLED' }, einvoiceStatus: { in: ['PENDING', 'FAILED'] } }, orderBy: { issueDate: 'asc' }, take: 100, ...invoiceForIrp }),
+      prisma.creditDebitNote.findMany({ where: { tenantId: t, status: { not: 'CANCELLED' }, einvoiceStatus: { in: ['PENDING', 'FAILED'] } }, orderBy: { issueDate: 'asc' }, take: 100, ...noteForIrp }),
+    ]);
+    const payloads: unknown[] = [], problems: { number: string; problems: string[] }[] = [];
+    const add = (number: string, build: () => unknown) => {
+      try { payloads.push(build()); } catch (e) { if (e instanceof EinvoiceValidationError) problems.push({ number, problems: e.problems }); else throw e; }
+    };
+    for (const i of invs) add(i.number, () => buildIrpPayload(i));
+    for (const n of notes) add(n.number, () => buildIrpPayloadFromDoc(noteDoc(n)));
+    return { payloads, problems };
+  });
+
+  /** Paste / upload whatever the portal returned; IRNs are matched to documents by number. */
+  app.post('/einvoice/portal-import', { ...billing, bodyLimit: 10 * 1024 * 1024 }, async (req) => {
+    const b = z.object({ result: z.unknown(), invoiceId: z.string().optional() }).parse(req.body);
+    let data = b.result;
+    if (typeof data === 'string') { try { data = JSON.parse(data); } catch { throw bad('That is not JSON. Upload the JSON file the e-invoice portal gave you.'); } }
+    const rows = parsePortalResult(data);
+    if (!rows.length) throw bad('No IRN found in that file. Use the JSON from the portal after the IRN was generated (it contains Irn, AckNo and SignedQRCode).');
+    const t = tid(req);
+    const done: { number: string; irn: string }[] = [], skipped: { docNo: string | null; reason: string }[] = [];
+    for (const r of rows) {
+      const data = { einvoiceStatus: 'GENERATED' as const, irn: r.irn, ackNo: r.ackNo, ackDate: r.ackDate, signedQr: r.signedQr, signedInvoice: r.signedInvoice, einvoiceError: null };
+      const isNote = r.docType === 'CRN' || r.docType === 'DBN';
+      const inv = !isNote ? await prisma.invoice.findFirst({ where: { tenantId: t, ...(r.docNo ? { number: r.docNo } : b.invoiceId && rows.length === 1 ? { id: b.invoiceId } : { id: '' }) } }) : null;
+      const note = !inv && r.docNo ? await prisma.creditDebitNote.findFirst({ where: { tenantId: t, number: r.docNo } }) : null;
+      const doc = inv ?? note;
+      if (!doc) { skipped.push({ docNo: r.docNo, reason: 'no invoice or note with this number' }); continue; }
+      if (doc.einvoiceStatus === 'GENERATED') { skipped.push({ docNo: doc.number, reason: doc.irn === r.irn ? 'already imported' : `already has a different IRN ${doc.irn}` }); continue; }
+      if (doc.einvoiceStatus === 'NOT_REQUIRED' || doc.einvoiceStatus === 'CANCELLED') { skipped.push({ docNo: doc.number, reason: `e-invoice status is ${doc.einvoiceStatus.toLowerCase().replace('_', ' ')}` }); continue; }
+      if (inv) await prisma.invoice.update({ where: { id: inv.id }, data });
+      else await prisma.creditDebitNote.update({ where: { id: note!.id }, data });
+      await audit(req, 'EINVOICE_IMPORT', inv ? 'Invoice' : 'CreditDebitNote', doc.id, { provider: 'PORTAL', irn: r.irn, ackNo: r.ackNo });
+      done.push({ number: doc.number, irn: r.irn });
+    }
+    return { imported: done, skipped };
+  });
+
+  /** Type in the IRN details by hand (when only the portal screen is at hand). The signed QR can be added later by import. */
+  app.post('/invoices/:id/einvoice/record', billing, async (req) => {
+    const b = z.object({ irn: z.string().trim().regex(/^[0-9a-fA-F]{64}$/, 'IRN is 64 letters and digits'), ackNo: z.string().trim().regex(/^\d{10,20}$/, 'Ack no. is the long number on the portal'), ackDate: z.coerce.date(), signedQr: z.string().trim().min(100).optional() }).parse(req.body);
+    const inv = await loadInvoice(req);
+    if (inv.einvoiceStatus !== 'PENDING' && inv.einvoiceStatus !== 'FAILED') throw bad(`E-invoice status is ${inv.einvoiceStatus.toLowerCase()}`);
+    await prisma.invoice.update({ where: { id: inv.id }, data: { einvoiceStatus: 'GENERATED', irn: b.irn.toLowerCase(), ackNo: b.ackNo, ackDate: b.ackDate, signedQr: b.signedQr ?? null, einvoiceError: null } });
+    await audit(req, 'EINVOICE_RECORD', 'Invoice', inv.id, { irn: b.irn, ackNo: b.ackNo });
+    return { ok: true };
+  });
+
+  /** E-way bill made on ewaybillgst.gov.in: record its number against the invoice. */
+  app.post('/invoices/:id/ewaybill/record', billing, async (req) => {
+    const b = z.object({
+      ewbNo: z.string().transform((v) => v.replace(/\s/g, '')).pipe(z.string().regex(/^\d{12}$/, 'E-way bill number is 12 digits')), ewbDate: z.coerce.date().optional(), validUpto: z.coerce.date().nullish(),
+      vehicleNo: z.string(), distanceKm: z.number().int().min(0).max(4000).default(0), challanId: z.string().optional(),
+    }).parse(req.body);
+    const inv = await loadInvoice(req);
+    if (await prisma.ewayBill.count({ where: { invoiceId: inv.id, status: 'ACTIVE' } })) throw bad('This invoice already has an active e-way bill');
+    if (await prisma.ewayBill.count({ where: { tenantId: tid(req), ewbNo: b.ewbNo } })) throw bad('This e-way bill number is already recorded');
+    const vehicleNo = normaliseVehicleNo(b.vehicleNo);
+    const ve = vehicleNoError(vehicleNo); if (ve) throw bad(ve);
+    const ewb = await prisma.ewayBill.create({ data: { tenantId: tid(req), invoiceId: inv.id, challanId: b.challanId ?? null, ewbNo: b.ewbNo, ewbDate: b.ewbDate ?? new Date(), validUpto: b.validUpto ?? null, vehicleNo, transMode: '1', distanceKm: b.distanceKm } });
+    await audit(req, 'EWAYBILL_RECORD', 'EwayBill', ewb.id, { invoice: inv.number, ewbNo: b.ewbNo, vehicleNo });
+    return ewb;
   });
 
   // ───── E-way bill (generated from the IRN) ─────
@@ -232,8 +303,14 @@ export default async function (app: FastifyInstance) {
   });
 
   app.post('/ewaybill/:id/extend', billing, async (req) => {
-    const b = z.object({ remainingDistanceKm: z.number().int().positive().max(4000), reasonCode: z.enum(['1', '2', '3', '4', '99']), remark: z.string().min(3).max(50), fromPlace: z.string().optional(), fromPin: z.string().optional() }).parse(req.body);
+    const b = z.object({ remainingDistanceKm: z.number().int().positive().max(4000), reasonCode: z.enum(['1', '2', '3', '4', '99']), remark: z.string().min(3).max(50), fromPlace: z.string().optional(), fromPin: z.string().optional(), validUpto: z.coerce.date().optional() }).parse(req.body);
     const e = await loadEwb(req);
+    if ((await getSettings(tid(req)))?.provider === 'PORTAL') {
+      if (!b.validUpto) throw bad('Extend it on ewaybillgst.gov.in, then enter the new valid-upto date');
+      const u = await prisma.ewayBill.update({ where: { id: e.id }, data: { validUpto: b.validUpto } });
+      await audit(req, 'EWAYBILL_EXTEND', 'EwayBill', e.id, { ewbNo: e.ewbNo, validUpto: b.validUpto, remark: b.remark, provider: 'PORTAL' });
+      return u;
+    }
     const t = e.invoice.tenant;
     const fromPin = b.fromPin ?? t.pincode;
     const pe = pincodeError(fromPin, 'Current location'); if (pe) throw bad(pe);

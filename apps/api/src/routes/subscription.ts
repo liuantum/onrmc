@@ -31,7 +31,7 @@ export default async function (app: FastifyInstance) {
     return {
       ...state, plans, quotes,
       methods: {
-        manual: ps.manualEnabled ? { upiId: ps.upiId, upiQr: ps.upiQr, bankAccountName: ps.bankAccountName, bankAccountNo: ps.bankAccountNo, bankIfsc: ps.bankIfsc, bankName: ps.bankName, bankBranch: ps.bankBranch, instructions: ps.instructions } : null,
+        manual: ps.manualEnabled ? { upiId: ps.upiId, payeeName: ps.bankAccountName || ps.sellerLegalName, upiQr: ps.upiQr, bankAccountName: ps.bankAccountName, bankAccountNo: ps.bankAccountNo, bankIfsc: ps.bankIfsc, bankName: ps.bankName, bankBranch: ps.bankBranch, instructions: ps.instructions } : null,
         razorpay: ps.razorpayEnabled && ps.razorpayKeyId && ps.razorpaySecretEnc ? { mode: gatewayMode.razorpay(ps.razorpayKeyId) } : null,
         cashfree: ps.cashfreeEnabled && ps.cashfreeAppId && ps.cashfreeSecretEnc ? { mode: gatewayMode.cashfree(ps.cashfreeEnv), env: ps.cashfreeEnv } : null,
       },

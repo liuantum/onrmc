@@ -20,3 +20,6 @@ fun qty(n: Double, digits: Int = 2): String {
 
 /** "IN_TRANSIT" → "In transit" */
 fun pretty(status: String): String = status.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+
+/** Shown in the app footers. */
+const val BRAND_CREDIT = "Platform developed by liuantum LLP"

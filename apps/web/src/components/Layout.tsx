@@ -1,3 +1,4 @@
+import { BRAND_CREDIT } from './PrintBits';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { BarChart3, Boxes, Building2, ClipboardList, CreditCard, FileMinus, FileText, HandCoins, Receipt, Store, Gauge, LogOut, Map, Factory, Truck, Users, Wallet, Crown, Settings, BadgeIndianRupee, Landmark, Wrench, FlaskConical } from 'lucide-react';
 import { session } from '../lib/api';
@@ -50,6 +51,7 @@ export default function Layout() {
           <div className="px-3 text-sm font-medium">{s.user.name}</div>
           <div className="px-3 text-xs text-slate-400">{s.user.role.toLowerCase()}</div>
           <button className="btn-ghost mt-2 w-full" onClick={() => { session.set(null); nav('/login'); }}><LogOut size={16} />Sign out</button>
+          <div className="mt-2 px-3 text-[10px] leading-tight text-slate-400">{BRAND_CREDIT}</div>
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">

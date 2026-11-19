@@ -84,9 +84,15 @@ Code: `apps/api/src/lib/einvoice/` (payload, validation, adapters) and `apps/api
   - `MASTERS_INDIA` (`adapters/mastersindia.ts`): token from `/api/v1/token-auth/` (cached ~20 h, refreshed once on
     401); the NIC payload is mapped field by field to Masters India's snake_case format, copying values, never
     recomputing them.
-  - Both default to the provider's **sandbox**. Production is chosen explicitly in Settings → E-invoicing
-    (Environment), and the screen shows which mode is active. Request mapping and error handling are covered by
-    `apps/api/test/gsp-adapters.test.ts` against a fake server; confirm against the provider's sandbox before going live.
+  - Both default to **production** (live). Sandbox can still be picked in Settings → E-invoicing (Environment), and
+    the screen shows which mode is active. Request mapping and error handling are covered by
+    `apps/api/test/gsp-adapters.test.ts` against a fake server.
+  - `PORTAL` (`adapters/portal.ts`, the default for new plants): no GSP account. The invoice is downloaded as NIC
+    schema JSON (one invoice, or every pending invoice and note for bulk upload), uploaded at einvoice1.gst.gov.in
+    with the plant's own GST login, and the portal's result JSON is imported back (`lib/einvoice/portal-import.ts`
+    finds IRN, Ack no./date, signed QR and invoice in any shape and matches them by document number). The IRN can
+    also be typed in. E-way bills are made on the portal and their number recorded; cancellations, vehicle changes
+    and extensions done on the portal are recorded in onrmc.
   - `NIC_DIRECT` is still a stub (needs NIC API credentials, a whitelisted IP and session-key exchange).
 - **Credentials:** encrypted with AES-256-GCM using `EINVOICE_ENC_KEY` from the API environment.
   They are write-only from the UI and never returned or logged.
@@ -106,12 +112,23 @@ Code: `apps/api/src/lib/einvoice/` (payload, validation, adapters) and `apps/api
   - `PATCH /ewaybill/:id/vehicle`
   - `POST /ewaybill/:id/cancel`
   - `POST /ewaybill/:id/extend`
+  - Portal mode: `GET /einvoice/portal-json`, `POST /einvoice/portal-import`, `POST /invoices/:id/einvoice/record`,
+    `POST /invoices/:id/ewaybill/record`
+  - `GET /gstin/:gstin`, `GET /gstin-portal/captcha`, `POST /gstin/:gstin/portal`: free lookup through the GST
+    portal's public taxpayer search (`lib/gst-portal.ts`): the user types the portal's captcha in the form, and the
+    legal name, address, PIN and status fill in. Not a published API, so a portal change fails cleanly. Also:
+    check digit, state, PAN and entity type from the GSTIN itself; saved details if a customer or
+    supplier already has it; legal name, address, PIN and GST status from the GST system through the connected GSP
+    (Masters India `get-gstin-details`). Used by the customer, supplier, order and invoice forms to fill details.
   - `GET|PUT /einvoice/settings`
   - `POST /einvoice/test`
   - `GET|PUT /company`
-- **Going live:** get a sandbox account from ClearTax or Masters India, save its credentials with Environment =
-  sandbox and press *Test connection*; generate a test IRN. Then create the company's e-invoice API user on the
-  IRP/EWB portal for that GSP, save the production credentials and switch Environment to production.
+- **Going live:** with no GSP, choose *GST portal* and switch e-invoicing on. For automatic IRNs, create the
+  company's e-invoice API user on the IRP portal for ClearTax or Masters India, save those credentials (Environment
+  defaults to production) and press *Test connection*.
+- **GSTIN autofill for every plant:** the super admin saves onrmc's own lookup account, Cashfree Verify GSTIN
+  (`lib/cashfree-gstin.ts`, prepaid per call) or Masters India, under Payment settings → Automatic GSTIN fill (`GET|PUT /admin/gstin-lookup`, `POST /admin/gstin-lookup/test`). Lookups use the
+  plant's own GSP first, then this account, and are cached for a day.
 
 ## 4b. Inventory and cost of materials in the books
 
@@ -236,7 +253,8 @@ Code: `apps/api/src/lib/subscription.ts`, `lib/gateways.ts`, `routes/subscriptio
 Web: owner → Subscription; super admin → Payments, Payment settings.
 
 - **Methods**, each switched on or off by the super admin:
-  - *Manual:* the owner sees the super admin's UPI QR, UPI id and bank details, pays, and submits the UTR (and an
+  - *Manual:* the owner sees a UPI QR made from the super admin's UPI ID with the exact amount filled in (or an
+    uploaded QR image when there is no UPI ID), an "Open UPI app" button on phones, and the bank details; pays, and submits the UTR (and an
     optional screenshot). The super admin checks the bank statement and approves or rejects. A UTR can't be
     submitted twice.
   - *Razorpay:* Orders API + Checkout; the signature is verified on the server; `payment.captured` /

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TRIP_STATES } from '@onrmc/shared';
@@ -28,7 +29,7 @@ export default function Dispatch() {
         </div>
       )}
       <Table rows={challans} cols={[
-        { key: 'number', label: 'Challan' },
+        { key: 'number', label: 'Challan', render: (c: any) => <Link className="font-medium text-brand-600 hover:underline" to={`/challans/${c.id}`}>{c.number}</Link> },
         { key: 'c', label: 'Customer / site', render: (c: any) => <><div className="font-medium">{c.order.customer.name}</div><div className="text-xs text-slate-500">{c.order.site.name}</div></> },
         { key: 'g', label: 'Load', render: (c: any) => `${c.order.mixDesign.grade} · ${qty(c.quantityM3)} m³` },
         { key: 'v', label: 'Truck / driver', render: (c: any) => <>{c.vehicle.number}<div className="text-xs text-slate-500">{c.driver?.name ?? '—'}</div></> },

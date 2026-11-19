@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -95,6 +96,8 @@ fun LoginScreen(appName: String, session: Session, api: Api, allowedRoles: Set<S
                 if (busy) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp) else Text("Sign in", fontSize = 16.sp)
             }
             TextButton(onClick = { showServer = !showServer }) { Text(if (showServer) "Hide server address" else "Server: ${session.apiUrl.removeSuffix("/api")}", fontSize = 12.sp) }
+            Spacer(Modifier.height(24.dp))
+            Text(BRAND_CREDIT, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

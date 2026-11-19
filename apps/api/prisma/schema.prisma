@@ -636,6 +636,7 @@ enum EinvoiceStatus {
 
 enum GspProvider {
   MOCK
+  PORTAL // no GSP: JSON uploaded on the IRP / EWB portals with the taxpayer's own GST login
   CLEARTAX
   MASTERS_INDIA
   NIC_DIRECT
@@ -654,7 +655,7 @@ model EinvoiceSettings {
   tenant          Tenant      @relation(fields: [tenantId], references: [id])
   einvoiceEnabled Boolean     @default(false)
   ewaybillEnabled Boolean     @default(false)
-  provider        GspProvider @default(MOCK)
+  provider        GspProvider @default(PORTAL)
   credentialsEnc  String?     @db.Text
   updatedAt       DateTime    @updatedAt
 }
@@ -1092,6 +1093,10 @@ model PlatformSettings {
   // lifecycle
   graceDays          Int      @default(7)
   reminderDays       Int      @default(7)
+  /// GSTIN → name/address lookups for every plant, through onrmc's own Masters India account
+  gstinLookupEnabled Boolean  @default(false)
+  gstinLookupGstin   String? // GSTIN the Masters India account is registered to (sent as user_gstin)
+  gstinLookupEnc     String?  @db.Text // {username, password, clientId?, clientSecret?, environment}
   updatedAt          DateTime @updatedAt
 }
 

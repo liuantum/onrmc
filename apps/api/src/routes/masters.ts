@@ -36,6 +36,11 @@ export default async function (app: FastifyInstance) {
   app.post('/customers', { preHandler: requireRole('MANAGER', 'SALES', 'ACCOUNTANT') }, async (req) => {
     const b = customer.parse(req.body);
     const t = tid(req);
+    if (b.gstin) {
+      b.gstin = b.gstin.toUpperCase();
+      const dup = await prisma.customer.findFirst({ where: { tenantId: t, gstin: b.gstin }, select: { name: true } });
+      if (dup) throw bad(`${dup.name} already has GSTIN ${b.gstin}`);
+    }
     const c = await prisma.$transaction(async (tx) => {
       // each customer gets its own ledger under Sundry Debtors
       const n = await tx.account.count({ where: { tenantId: t, group: 'Sundry Debtors', system: false } });

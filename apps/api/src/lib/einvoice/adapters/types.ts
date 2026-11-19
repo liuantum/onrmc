@@ -32,6 +32,13 @@ export interface GspAdapter {
   updatePartB(input: PartBInput): Promise<{ validUpto: Date | null; raw?: unknown }>;
   cancelEwb(ewbNo: string, reason: EwbCancelCode, remark: string): Promise<{ cancelledAt: Date; raw?: unknown }>;
   extendValidity(input: ExtendInput): Promise<{ validUpto: Date; raw?: unknown }>;
+  /** Taxpayer details from the GST system, when the provider offers it. */
+  gstinDetails?(gstin: string): Promise<GstinDetails | null>;
+}
+
+export interface GstinDetails {
+  gstin: string; legalName: string | null; tradeName: string | null; address: string | null; city: string | null;
+  stateCode: string | null; pincode: string | null; status: string | null; taxpayerType: string | null; blocked: boolean;
 }
 
 /** Error from the provider / portal, with the portal's error code when there is one. */

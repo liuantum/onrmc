@@ -1,6 +1,6 @@
 import type { IrpPayload } from '../payload.js';
 import { gspFetch, portalDate, todayIst, type GspEnv } from './http.js';
-import { GspError, type EwbByIrnInput, type EwbCancelCode, type ExtendInput, type GspAdapter, type IrnCancelCode, type IrnResult, type PartBInput } from './types.js';
+import { GspError, type EwbByIrnInput, type EwbCancelCode, type ExtendInput, type GspAdapter, type GstinDetails, type IrnCancelCode, type IrnResult, type PartBInput } from './types.js';
 
 const STATE_NAMES: Record<string, string> = {
   '01': 'JAMMU AND KASHMIR', '02': 'HIMACHAL PRADESH', '03': 'PUNJAB', '04': 'CHANDIGARH', '05': 'UTTARAKHAND', '06': 'HARYANA', '07': 'DELHI', '08': 'RAJASTHAN',
@@ -87,6 +87,22 @@ export class MastersIndiaAdapter implements GspAdapter {
   async testConnection() {
     await this.token(true);
     return { ok: true as const, message: `Masters India ${this.env} accepted the credentials` };
+  }
+  /** GET /api/v1/get-gstin-details/ → NIC GetGSTINDetails fields (LegalName, TradeName, Addr*, StateCode, AddrPncd, Status). */
+  async gstinDetails(gstin: string): Promise<GstinDetails | null> {
+    const token = await this.token();
+    const qs = new URLSearchParams({ access_token: token, user_gstin: this.gstin, gstin });
+    const { json } = await gspFetch(`${this.base}/api/v1/get-gstin-details/?${qs}`, { method: 'GET', headers: { Authorization: `JWT ${token}` } });
+    let m: any;
+    try { m = this.result(json); } catch (e) { if (e instanceof GspError && /3001|not available/i.test(e.message)) return null; throw e; }
+    if (!m || typeof m !== 'object') return null;
+    const parts = [m.AddrBno, m.AddrFlno, m.AddrBnm, m.AddrSt].filter((x) => x && String(x).trim());
+    return {
+      gstin: String(m.Gstin ?? gstin).toUpperCase(), legalName: m.LegalName ?? null, tradeName: m.TradeName ?? null,
+      address: parts.length ? parts.join(', ') : null, city: m.AddrLoc ?? null,
+      stateCode: m.StateCode != null ? String(m.StateCode).padStart(2, '0') : null, pincode: m.AddrPncd != null ? String(m.AddrPncd) : null,
+      status: m.Status ?? null, taxpayerType: m.TxpType ?? null, blocked: m.BlkStatus === 'B',
+    };
   }
   async generateIrn(p: IrpPayload) { return this.irn(await this.call('/api/v1/einvoice/', MastersIndiaAdapter.toMastersIndia(p, this.gstin))); }
   async cancelIrn(irn: string, reason: IrnCancelCode, remark: string) {

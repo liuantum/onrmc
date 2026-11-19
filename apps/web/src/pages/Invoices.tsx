@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { computeLine, sumBreakups } from '@onrmc/shared';
 import { Plus, Trash2 } from 'lucide-react';
 import { api, date, money, qty } from '../lib/api';
 import { Badge, ErrorText, Field, Modal, PageHeader, Table, useSave } from '../components/ui';
+import { GstinField } from '../components/GstinField';
 
 export default function Invoices() {
   const nav = useNavigate();
@@ -63,9 +64,10 @@ function NewInvoice({ onClose }: { onClose: () => void }) {
         </Field>
         <Field label="Customer">
           <select className="input" value={customerId} onChange={(e) => { setCustomerId(e.target.value); setPicked([]); }}>
-            <option value="">Select customer</option>{customers?.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value="">Select customer</option>{customers?.map((c: any) => <option key={c.id} value={c.id}>{c.name}{c.gstin ? ` · ${c.gstin}` : ''}</option>)}
           </select>
         </Field>
+        {customerId && <CustomerGst c={customers?.find((c: any) => c.id === customerId)} />}
       </div>
       {customerId && (
         <div className="mt-4">
@@ -107,5 +109,40 @@ function NewInvoice({ onClose }: { onClose: () => void }) {
       </div>
       <ErrorText error={save.error} />
     </Modal>
+  );
+}
+
+/** Buyer GST details on the invoice, with a one-click fill from the GSTIN when they are incomplete. */
+function CustomerGst({ c }: { c: any }) {
+  const qc = useQueryClient();
+  const [edit, setEdit] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!c) return null;
+  const missing = c.gstin && (!c.billingAddress || !c.pincode);
+  async function save(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
+    try {
+      await api(`/customers/${c.id}`, { method: 'PUT', body: { name: d.name, gstin: d.gstin || null, stateCode: d.stateCode, billingAddress: d.billingAddress || null, city: d.city || null, pincode: d.pincode || null, phone: c.phone, email: c.email, creditLimit: Number(c.creditLimit), creditDays: c.creditDays } });
+      await qc.invalidateQueries({ queryKey: ['customers'] }); setEdit(false);
+    } catch (x) { setErr((x as Error).message); }
+  }
+  return (
+    <div className="col-span-2 rounded-lg bg-slate-50 p-3 text-sm">
+      {!edit ? <div className="flex items-start justify-between gap-3">
+        <div><div className="font-medium">{c.name}</div><div className="text-slate-500">{[c.billingAddress, c.city, c.pincode].filter(Boolean).join(', ') || 'No address'} · state {c.stateCode}</div><div className="text-slate-500">{c.gstin ? `GSTIN ${c.gstin}` : 'Unregistered (B2C)'}</div>
+          {missing && <div className="text-xs text-amber-700">Address or PIN missing. E-invoices need them.</div>}</div>
+        <button type="button" className="btn-ghost shrink-0 text-xs" onClick={() => setEdit(true)}>{c.gstin ? 'Edit GST details' : 'Add GSTIN'}</button>
+      </div> : <form className="grid grid-cols-2 gap-3" onSubmit={save}>
+        <div className="col-span-2"><GstinField defaultValue={c.gstin ?? ''} fill={{ name: 'name', address: 'billingAddress', city: 'city', pincode: 'pincode', stateCode: 'stateCode' }} /></div>
+        <Field label="Name" className="col-span-2"><input name="name" className="input" defaultValue={c.name} required /></Field>
+        <Field label="Billing address" className="col-span-2"><input name="billingAddress" className="input" defaultValue={c.billingAddress ?? ''} /></Field>
+        <Field label="City"><input name="city" className="input" defaultValue={c.city ?? ''} /></Field>
+        <Field label="PIN"><input name="pincode" className="input" defaultValue={c.pincode ?? ''} maxLength={6} /></Field>
+        <Field label="State code"><input name="stateCode" className="input" defaultValue={c.stateCode} maxLength={2} required /></Field>
+        <div className="flex items-end justify-end gap-2"><button type="button" className="btn-ghost" onClick={() => setEdit(false)}>Back</button><button className="btn-primary">Save</button></div>
+        <div className="col-span-2"><ErrorText error={err} /></div>
+      </form>}
+    </div>
   );
 }

@@ -11,6 +11,8 @@ import { decryptJson } from '../lib/einvoice/crypto.js';
 import { cashfree, razorpay } from '../lib/gateways.js';
 import { activatePayment, clearStateCache, platformSettings, sweepSubscriptions } from '../lib/subscription.js';
 import { gatewayMode } from './subscription.js';
+import { clearGstinCache, platformGstinDetails } from './gstin.js';
+import { gstinError } from '../lib/einvoice/index.js';
 
 const SECRET_FIELDS = ['razorpaySecretEnc', 'razorpayWebhookEnc', 'cashfreeSecretEnc', 'cashfreeWebhookEnc'] as const;
 const enc = (v: string) => encryptJson({ v });
@@ -89,6 +91,7 @@ export default async function (app: FastifyInstance) {
     const ps = await platformSettings();
     const out: Record<string, unknown> = { ...ps };
     for (const f of SECRET_FIELDS) { out[f.replace(/Enc$/, 'Saved')] = !!ps[f]; delete out[f]; }
+    delete out.gstinLookupEnc;
     return { ...out, razorpayMode: gatewayMode.razorpay(ps.razorpayKeyId), cashfreeMode: gatewayMode.cashfree(ps.cashfreeEnv), encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16 };
   };
   app.get('/platform-settings', view);
@@ -96,7 +99,7 @@ export default async function (app: FastifyInstance) {
   app.put('/platform-settings', { bodyLimit: 2 * 1024 * 1024 }, async (req) => {
     const opt = z.string().trim().max(200).nullish().transform((v) => v || null);
     const b = z.object({
-      manualEnabled: z.boolean(), upiId: opt, upiQr: z.string().startsWith('data:image/').max(1_500_000).nullish(),
+      manualEnabled: z.boolean(), upiId: z.string().trim().regex(/^[\w.-]{2,256}@[a-zA-Z][a-zA-Z0-9.]{1,63}$/, 'UPI ID looks wrong (like name@okhdfcbank)').nullish().or(z.literal('').transform(() => null)), upiQr: z.string().startsWith('data:image/').max(1_500_000).nullish(),
       bankAccountName: opt, bankAccountNo: opt, bankIfsc: z.string().trim().toUpperCase().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'IFSC looks wrong').nullish().or(z.literal('').transform(() => null)),
       bankName: opt, bankBranch: opt, instructions: z.string().max(1000).nullish(),
       razorpayEnabled: z.boolean(), razorpayKeyId: z.string().trim().regex(/^rzp_(test|live)_\w+$/, 'Razorpay key id starts with rzp_test_ or rzp_live_').nullish().or(z.literal('').transform(() => null)),
@@ -136,6 +139,46 @@ export default async function (app: FastifyInstance) {
       return cashfree.test(ps.cashfreeEnv, ps.cashfreeAppId, s);
     }
     throw notFound();
+  });
+
+  // ───── GSTIN lookup for all plants (onrmc's own Masters India account; secrets write-only) ─────
+  const lookupView = async () => {
+    const ps = await platformSettings();
+    let creds: Record<string, string> = {};
+    try { creds = ps.gstinLookupEnc ? decryptJson<Record<string, string>>(ps.gstinLookupEnc) : {}; } catch { creds = {}; }
+    return { enabled: ps.gstinLookupEnabled, gstin: ps.gstinLookupGstin, provider: creds.provider ?? (creds.username ? 'mastersindia' : 'cashfree'), environment: creds.environment ?? 'production', savedKeys: Object.keys(creds).filter((k) => k !== 'environment' && k !== 'provider'), encryptionReady: (process.env.EINVOICE_ENC_KEY?.length ?? 0) >= 16 };
+  };
+  app.get('/gstin-lookup', lookupView);
+  app.put('/gstin-lookup', async (req) => {
+    const b = z.object({
+      enabled: z.boolean(), gstin: z.string().trim().toUpperCase().nullish().transform((v) => v || null),
+      provider: z.enum(['cashfree', 'mastersindia']).default('cashfree'), environment: z.enum(['production', 'sandbox']).default('production'),
+      username: z.string().optional(), password: z.string().optional(), clientId: z.string().optional(), clientSecret: z.string().optional(),
+    }).parse(req.body);
+    if (b.gstin) { const e = gstinError(b.gstin, 'Account'); if (e) throw bad(e); }
+    const ps = await platformSettings();
+    let prev = ps.gstinLookupEnc ? decryptJson<Record<string, string>>(ps.gstinLookupEnc) : {};
+    if ((prev.provider ?? (prev.username ? 'mastersindia' : 'cashfree')) !== b.provider) prev = {}; // keys belong to one provider
+    const next: Record<string, string> = { ...prev, provider: b.provider, environment: b.environment };
+    for (const k of ['username', 'password', 'clientId', 'clientSecret'] as const) if (b[k]?.trim()) next[k] = b[k]!.trim();
+    if (b.enabled && b.provider === 'cashfree' && (!next.clientId || !next.clientSecret)) throw bad('Add the Cashfree client ID and client secret before switching lookups on');
+    if (b.enabled && b.provider === 'mastersindia' && (!b.gstin || !next.username || !next.password)) throw bad('Add the GSTIN, username and password of the Masters India account before switching lookups on');
+    let gstinLookupEnc: string;
+    try { gstinLookupEnc = encryptJson(next); } catch (e) { throw bad((e as Error).message); }
+    await prisma.platformSettings.update({ where: { id: 'platform' }, data: { gstinLookupEnabled: b.enabled, gstinLookupGstin: b.gstin, gstinLookupEnc } });
+    clearGstinCache();
+    await audit(req, 'GSTIN_LOOKUP_SETTINGS', 'PlatformSettings', 'platform', { enabled: b.enabled, provider: b.provider, gstin: b.gstin, environment: b.environment, keysChanged: ['username', 'password', 'clientId', 'clientSecret'].filter((k) => b[k as 'username']?.trim()) });
+    return lookupView();
+  });
+  app.post('/gstin-lookup/test', async (req) => {
+    const { gstin } = z.object({ gstin: z.string().trim().toUpperCase().optional() }).parse(req.body ?? {});
+    const ps = await platformSettings();
+    const g = gstin || ps.gstinLookupGstin || ps.sellerGstin;
+    if (!g) throw bad('Enter a GSTIN to look up');
+    try {
+      const d = await platformGstinDetails(g, true);
+      return d ? { ok: true, message: `Found: ${d.legalName}${d.address ? `, ${d.address}` : ''}${d.pincode ? ` ${d.pincode}` : ''} (status ${d.status ?? '?'})`, details: d } : { ok: false, message: 'The lookup service answered, but has no record of that GSTIN' };
+    } catch (e) { return { ok: false, message: (e as Error).message }; }
   });
 
   // ───── Subscription payments ─────

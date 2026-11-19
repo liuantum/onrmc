@@ -3,13 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { api, money } from '../lib/api';
 import { ErrorText, Field, Modal, PageHeader, Table, formData, useSave } from '../components/ui';
+import { CustomerForm } from '../components/CustomerForm';
 
 export default function Customers() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [siteFor, setSiteFor] = useState<any>(null);
   const { data } = useQuery({ queryKey: ['customers', q], queryFn: () => api(`/customers?q=${encodeURIComponent(q)}`) });
-  const save = useSave('/customers', ['customers'], () => setOpen(false));
   const saveSite = useSave(() => `/customers/${siteFor.id}/sites`, ['customers'], () => setSiteFor(null));
   return (
     <>
@@ -22,20 +22,7 @@ export default function Customers() {
         { key: 'credit', label: 'Credit', align: 'right', render: (c: any) => `${money(c.creditLimit)} · ${c.creditDays}d` },
       ]} />
       <Modal title="Add customer" open={open} onClose={() => setOpen(false)}>
-        <form className="grid grid-cols-2 gap-4" onSubmit={(e) => save.mutate(formData(e))}>
-          <Field label="Name" className="col-span-2"><input name="name" className="input" required /></Field>
-          <Field label="Phone"><input name="phone" className="input" /></Field>
-          <Field label="GSTIN (if registered)"><input name="gstin" className="input uppercase" maxLength={15} /></Field>
-          <Field label="State code"><input name="stateCode" className="input" maxLength={2} defaultValue="36" required /></Field>
-          <Field label="Email"><input name="email" type="email" className="input" /></Field>
-          <Field label="Billing address" className="col-span-2"><input name="billingAddress" className="input" /></Field>
-          <Field label="City"><input name="city" className="input" /></Field>
-          <Field label="PIN code"><input name="pincode" className="input" inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} title="6-digit PIN code" /></Field>
-          <Field label="Credit limit (₹)"><input name="creditLimit" type="number" className="input" defaultValue={0} /></Field>
-          <Field label="Credit days"><input name="creditDays" type="number" className="input" defaultValue={30} /></Field>
-          <div className="col-span-2 flex justify-end"><button className="btn-primary" disabled={save.isPending}>Save</button></div>
-        </form>
-        <ErrorText error={save.error} />
+        <CustomerForm onSaved={() => setOpen(false)} />
       </Modal>
       <Modal title={`New site for ${siteFor?.name ?? ''}`} open={!!siteFor} onClose={() => setSiteFor(null)}>
         <form className="grid grid-cols-2 gap-4" onSubmit={(e) => saveSite.mutate(formData(e))}>

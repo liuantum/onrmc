@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, money } from '../lib/api';
-import { Badge, ErrorText, Field, Modal, PageHeader, Table, formData, useSave } from '../components/ui';
+import { Badge, ErrorText, Field, Modal, PageHeader, Table, Toggle, formData, useSave } from '../components/ui';
+import { UpiQr } from '../components/UpiQr';
 import { fileToDataUrl } from './Subscription';
 
 export default function AdminPayments() {
@@ -88,15 +89,17 @@ export function AdminPaymentSettings() {
       {!s.encryptionReady && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">EINVOICE_ENC_KEY is not set on the server, so gateway secrets can't be stored.</p>}
       <form onSubmit={save} className="space-y-6">
         <section className="card p-5">
-          <label className="mb-4 flex items-center gap-2 text-base font-semibold"><input type="checkbox" name="manualEnabled" defaultChecked={s.manualEnabled} />Manual payment (UPI QR / bank transfer, you approve)</label>
+          <div className="mb-4"><Toggle name="manualEnabled" defaultChecked={s.manualEnabled} label="Manual payment: UPI / QR / bank transfer" hint="Owners pay you directly and enter the UTR. You approve it under Payments. No gateway account needed." /></div>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="row-span-3">
-              <span className="label">UPI QR code</span>
-              {qrShown ? <img src={qrShown} alt="UPI QR" className="mb-2 w-40 rounded-lg border border-slate-200" /> : <div className="mb-2 flex h-40 w-40 items-center justify-center rounded-lg bg-slate-50 text-xs text-slate-400">No QR uploaded</div>}
-              <input name="qrFile" type="file" accept="image/*" className="text-xs" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { if (f.size > 1_000_000) return setErr('QR image must be under 1 MB'); setQr(await fileToDataUrl(f)); } }} />
-              {qrShown && <button type="button" className="btn-ghost mt-1 text-xs" onClick={() => setQr(null)}>Remove QR</button>}
+              <span className="label">QR shown to owners</span>
+              {s.upiId ? <UpiQr upiId={s.upiId} payee={s.bankAccountName || s.sellerLegalName} size={160} />
+                : qrShown ? <img src={qrShown} alt="UPI QR" className="mb-2 w-40 rounded-lg border border-slate-200" /> : <div className="mb-2 flex h-40 w-40 items-center justify-center rounded-lg bg-slate-50 p-3 text-center text-xs text-slate-400">Add a UPI ID and save, or upload your QR</div>}
+              <p className="mt-2 text-xs text-slate-500">{s.upiId ? 'Made from your UPI ID with the exact amount for each payment.' : 'Upload a QR image only if you have no UPI ID.'}</p>
+              {!s.upiId && <input name="qrFile" type="file" accept="image/*" className="text-xs" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { if (f.size > 1_000_000) return setErr('QR image must be under 1 MB'); setQr(await fileToDataUrl(f)); } }} />}
+              {!s.upiId && qrShown && <button type="button" className="btn-ghost mt-1 text-xs" onClick={() => setQr(null)}>Remove QR</button>}
             </div>
-            <Field label="UPI ID"><input name="upiId" className="input" defaultValue={s.upiId ?? ''} placeholder="onrmc@icici" /></Field>
+            <Field label="UPI ID"><input name="upiId" className="input" defaultValue={s.upiId ?? ''} placeholder="yourname@okhdfcbank" /></Field>
             <Field label="Account name"><input name="bankAccountName" className="input" defaultValue={s.bankAccountName ?? ''} /></Field>
             <Field label="Account number"><input name="bankAccountNo" className="input" defaultValue={s.bankAccountNo ?? ''} /></Field>
             <Field label="IFSC"><input name="bankIfsc" className="input uppercase" defaultValue={s.bankIfsc ?? ''} /></Field>
@@ -105,9 +108,11 @@ export function AdminPaymentSettings() {
             <Field label="Note to owners" className="md:col-span-2"><input name="instructions" className="input" defaultValue={s.instructions ?? ''} placeholder="Mention your company name in the remarks" /></Field>
           </div>
         </section>
+        <h2 className="pt-2 text-lg font-semibold">Live payment gateways</h2>
+        <p className="-mt-4 text-sm text-slate-500">Off until you have a Razorpay or Cashfree account. Add the keys, test, then switch on. Owners only see the methods that are on.</p>
         <section className="card p-5">
-          <label className="mb-1 flex items-center gap-2 text-base font-semibold"><input type="checkbox" name="razorpayEnabled" defaultChecked={s.razorpayEnabled} />Razorpay
-            {s.razorpayKeyId && <span className={`badge ${s.razorpayMode === 'live' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{s.razorpayMode} mode</span>}</label>
+          <div className="mb-1 flex items-center gap-2"><Toggle name="razorpayEnabled" defaultChecked={s.razorpayEnabled} label="Razorpay" />
+            {s.razorpayKeyId && <span className={`badge ${s.razorpayMode === 'live' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{s.razorpayMode} mode</span>}</div>
           <p className="mb-4 text-xs text-slate-500">Use rzp_test_ keys until you're ready; rzp_live_ keys take real money. Webhook URL: <span className="font-mono">{hook('razorpay')}</span> (events: payment.captured, payment.failed)</p>
           <div className="grid gap-4 md:grid-cols-3">
             <Field label="Key ID"><input name="razorpayKeyId" className="input font-mono" defaultValue={s.razorpayKeyId ?? ''} placeholder="rzp_test_..." /></Field>
@@ -117,8 +122,8 @@ export function AdminPaymentSettings() {
           <button type="button" className="btn-ghost mt-3" onClick={() => test('razorpay')}>Test connection</button>
         </section>
         <section className="card p-5">
-          <label className="mb-1 flex items-center gap-2 text-base font-semibold"><input type="checkbox" name="cashfreeEnabled" defaultChecked={s.cashfreeEnabled} />Cashfree
-            {s.cashfreeAppId && <span className={`badge ${s.cashfreeMode === 'live' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{s.cashfreeMode} mode</span>}</label>
+          <div className="mb-1 flex items-center gap-2"><Toggle name="cashfreeEnabled" defaultChecked={s.cashfreeEnabled} label="Cashfree" />
+            {s.cashfreeAppId && <span className={`badge ${s.cashfreeMode === 'live' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{s.cashfreeMode} mode</span>}</div>
           <p className="mb-4 text-xs text-slate-500">Sandbox until you switch to production with live keys. Webhook URL: <span className="font-mono">{hook('cashfree')}</span></p>
           <div className="grid gap-4 md:grid-cols-4">
             <Field label="Environment"><select name="cashfreeEnv" className="input" defaultValue={s.cashfreeEnv}><option value="sandbox">Sandbox (test)</option><option value="production">Production</option></select></Field>
